@@ -1,0 +1,244 @@
+import { EditorState } from './state.js';
+import { Preview } from './preview.js';
+import { Timeline } from './timeline.js';
+import { TextOverlayPanel } from './textOverlay.js';
+import { ZoomEffectPanel } from './zoomEffect.js';
+import { importVideoFile, SUPPORTED_EXTENSIONS } from './media.js';
+import { detectSilence, detectSceneChanges } from './autoCut.js';
+import { parseCommandOffline, parseCommandWithClaude, summarizeProject, executeActions } from './aiCommands.js';
+import { exportProject, downloadBlob } from './exportPipeline.js';
+import { formatTime } from './utils.js';
+
+const state = new EditorState();
+const canvas = document.getElementById('previewCanvas');
+const preview = new Preview(state, canvas);
+preview.start();
+
+const timelineContainer = document.getElementById('timelineContainer');
+const timeline = new Timeline(state, timelineContainer, {
+  onSeek: (t) => preview.seek(t),
+  onSelect: (type, id) => {
+    state.selection = { type, id };
+    refreshSidePanel();
+    timeline.render();
+  },
+});
+
+const textPanel = new TextOverlayPanel(state, document.getElementById('textPanel'), { onChange: rerenderAll });
+const zoomPanel = new ZoomEffectPanel(state, document.getElementById('zoomPanel'), { onChange: rerenderAll });
+
+const statusLog = document.getElementById('statusLog');
+const progressBar = document.getElementById('progressBar');
+const progressFill = document.getElementById('progressFill');
+
+function setStatus(msg) {
+  statusLog.textContent = msg;
+}
+
+function setProgress(p, label) {
+  if (p == null) {
+    progressBar.hidden = true;
+    return;
+  }
+  progressBar.hidden = false;
+  progressFill.style.width = `${Math.round(p * 100)}%`;
+  if (label) setStatus(label);
+}
+
+function rerenderAll() {
+  timeline.render();
+  refreshSidePanel();
+  document.getElementById('dropHint').classList.toggle('hidden', state.clips.length > 0);
+}
+
+function refreshSidePanel() {
+  if (state.selection.type === 'text') textPanel.renderFor(state.selection.id);
+  else textPanel.renderEmpty();
+  if (state.selection.type === 'zoom') zoomPanel.renderFor(state.selection.id);
+  else zoomPanel.renderEmpty();
+}
+
+state.on(() => rerenderAll());
+rerenderAll();
+
+// --- Playback controls -----------------------------------------------------
+const playBtn = document.getElementById('playBtn');
+playBtn.addEventListener('click', () => {
+  if (state.playing) {
+    preview.pause();
+    playBtn.textContent = '▶';
+  } else {
+    preview.play();
+    playBtn.textContent = '⏸';
+  }
+});
+
+document.getElementById('splitBtn').addEventListener('click', () => {
+  state.splitClipAt(state.playhead);
+});
+
+preview.onTimeUpdate = () => {
+  document.getElementById('timeLabel').textContent =
+    `${formatTime(state.playhead)} / ${formatTime(state.totalDuration())}`;
+  timeline.render();
+};
+setInterval(() => {
+  if (!state.playing) {
+    document.getElementById('timeLabel').textContent =
+      `${formatTime(state.playhead)} / ${formatTime(state.totalDuration())}`;
+  }
+}, 200);
+
+// --- Import ------------------------------------------------------------
+const fileInput = document.getElementById('fileInput');
+fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+const previewPane = document.querySelector('.preview-pane');
+previewPane.addEventListener('dragover', (e) => e.preventDefault());
+previewPane.addEventListener('drop', (e) => {
+  e.preventDefault();
+  handleFiles(e.dataTransfer.files);
+});
+
+async function handleFiles(fileList) {
+  for (const file of Array.from(fileList)) {
+    try {
+      setProgress(0.02, `Importing ${file.name}...`);
+      const { url, duration } = await importVideoFile(file, {
+        onStatus: (msg) => setProgress(0.5, msg),
+      });
+      state.addClip({ name: file.name, url, sourceDuration: duration });
+      setProgress(null);
+      setStatus(`Imported ${file.name} (${formatTime(duration, false)})`);
+    } catch (err) {
+      setProgress(null);
+      setStatus(`Failed to import ${file.name}: ${err.message}`);
+      console.error(err);
+    }
+  }
+  fileInput.value = '';
+}
+
+// --- Side tabs ---------------------------------------------------------
+document.querySelectorAll('.side-tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.side-tab').forEach((t) => t.classList.remove('active'));
+    tab.classList.add('active');
+    const target = tab.dataset.tab;
+    document.querySelectorAll('.side-tab-content').forEach((c) => {
+      c.hidden = c.dataset.tabContent !== target;
+    });
+  });
+});
+
+// --- Add text / zoom -----------------------------------------------------
+document.getElementById('addTextBtn').addEventListener('click', () => {
+  const overlay = state.addTextOverlay({ start: state.playhead, end: state.playhead + 3 });
+  state.selection = { type: 'text', id: overlay.id };
+  document.querySelector('.side-tab[data-tab="text"]').click();
+  rerenderAll();
+});
+
+document.getElementById('addZoomBtn').addEventListener('click', () => {
+  if (state.selection.type !== 'clip') {
+    setStatus('Select a clip on the timeline first, then click "+ Add Zoom".');
+    return;
+  }
+  const clip = state.clips.find((c) => c.id === state.selection.id);
+  const zoom = state.addZoomKeyframe({ clipId: clip.id, start: 0, end: Math.min(2, state.clipDuration(clip)) });
+  state.selection = { type: 'zoom', id: zoom.id };
+  rerenderAll();
+});
+
+// --- Auto-cut ------------------------------------------------------------
+function selectedClip() {
+  if (state.selection.type !== 'clip') return null;
+  return state.clips.find((c) => c.id === state.selection.id) || null;
+}
+
+document.getElementById('detectSilenceBtn').addEventListener('click', async () => {
+  const clip = selectedClip();
+  if (!clip) return setStatus('Select a clip first.');
+  const idx = state.clips.indexOf(clip);
+  setStatus('Analyzing audio for silence...');
+  await executeActions(state, [{ type: 'removeSilence', clipIndex: idx }], { onLog: setStatus });
+});
+
+document.getElementById('detectScenesBtn').addEventListener('click', async () => {
+  const clip = selectedClip();
+  if (!clip) return setStatus('Select a clip first.');
+  const idx = state.clips.indexOf(clip);
+  setStatus('Scanning for scene changes...');
+  await executeActions(state, [{ type: 'detectScenes', clipIndex: idx }], { onLog: setStatus });
+});
+
+// --- AI command bar --------------------------------------------------------
+const aiInput = document.getElementById('aiInput');
+const useClaudeToggle = document.getElementById('useClaudeToggle');
+const claudeApiKey = document.getElementById('claudeApiKey');
+
+useClaudeToggle.checked = localStorage.getItem('novacut_use_claude') === '1';
+claudeApiKey.value = localStorage.getItem('novacut_claude_key') || '';
+useClaudeToggle.addEventListener('change', () => localStorage.setItem('novacut_use_claude', useClaudeToggle.checked ? '1' : '0'));
+claudeApiKey.addEventListener('change', () => localStorage.setItem('novacut_claude_key', claudeApiKey.value));
+
+document.getElementById('aiSettingsToggle').addEventListener('click', () => {
+  const panel = document.getElementById('aiSettings');
+  panel.hidden = !panel.hidden;
+});
+
+async function runAiCommand() {
+  const text = aiInput.value.trim();
+  if (!text) return;
+  aiInput.value = '';
+  setStatus(`Running: "${text}"`);
+
+  if (useClaudeToggle.checked && claudeApiKey.value) {
+    try {
+      const actions = await parseCommandWithClaude(text, claudeApiKey.value, summarizeProject(state));
+      await executeActions(state, actions, { onLog: setStatus });
+      setStatus(`Done: ${text}`);
+      return;
+    } catch (err) {
+      setStatus(`Claude request failed (${err.message}); falling back to offline parser.`);
+    }
+  }
+
+  const { actions, unrecognized } = parseCommandOffline(text);
+  await executeActions(state, actions, { onLog: setStatus });
+  if (unrecognized.length) {
+    setStatus(`Applied ${actions.length} action(s). Didn't understand: "${unrecognized.join('; ')}"`);
+  } else if (actions.length) {
+    setStatus(`Applied: ${text}`);
+  } else {
+    setStatus(`Didn't recognize that command. Try "split at 0:10" or "add text 'Hi' from 0 to 3".`);
+  }
+}
+
+document.getElementById('aiRunBtn').addEventListener('click', runAiCommand);
+aiInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') runAiCommand();
+});
+
+// --- Export ------------------------------------------------------------
+document.getElementById('exportBtn').addEventListener('click', async () => {
+  if (state.clips.length === 0) return setStatus('Import a clip first.');
+  try {
+    preview.pause();
+    playBtn.textContent = '▶';
+    setProgress(0.01, 'Starting export...');
+    const blob = await exportProject(state, {
+      onProgress: (p, label) => setProgress(p, label),
+      onLog: setStatus,
+    });
+    downloadBlob(blob, 'novacut-export.mp4');
+    setProgress(null);
+    setStatus('Export complete — download started.');
+  } catch (err) {
+    console.error(err);
+    setProgress(null);
+    setStatus(`Export failed: ${err.message}`);
+  }
+});
+
+console.log('Nova Cut ready. Supported upload extensions:', SUPPORTED_EXTENSIONS.join(', '));

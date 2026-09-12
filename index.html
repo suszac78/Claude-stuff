@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nova Cut — AI Video Editor</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎬</text></svg>" />
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar">
+    <div class="brand">🎬 Nova Cut</div>
+    <div class="topbar-actions">
+      <label class="btn btn-primary" for="fileInput">+ Import Media</label>
+      <input id="fileInput" type="file" accept="video/*,.mkv,.hevc,.h265,.ts,.3gp" multiple hidden />
+      <button id="exportBtn" class="btn btn-accent">Export Video</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <section class="preview-pane">
+      <div class="canvas-wrap">
+        <canvas id="previewCanvas"></canvas>
+        <div id="dropHint" class="drop-hint">Drop video files here or click "Import Media"<br/><span>MP4, MOV, HEVC/H.265, MKV, AVI, WebM, and more</span></div>
+      </div>
+      <div class="transport">
+        <button id="playBtn" class="btn btn-icon" title="Play/Pause">▶</button>
+        <span id="timeLabel" class="time-label">00:00.000 / 00:00.000</span>
+        <button id="splitBtn" class="btn btn-icon" title="Split at playhead">✂ Split</button>
+      </div>
+    </section>
+
+    <aside class="side-panel">
+      <div class="side-tabs">
+        <button class="side-tab active" data-tab="text">Text</button>
+        <button class="side-tab" data-tab="zoom">Zoom</button>
+        <button class="side-tab" data-tab="auto">Auto-Cut</button>
+      </div>
+
+      <div class="side-tab-content" data-tab-content="text">
+        <button id="addTextBtn" class="btn btn-secondary btn-block">+ Add Text at Playhead</button>
+        <div id="textPanel" class="panel-body"></div>
+      </div>
+
+      <div class="side-tab-content" data-tab-content="zoom" hidden>
+        <button id="addZoomBtn" class="btn btn-secondary btn-block">+ Add Zoom on Selected Clip</button>
+        <div id="zoomPanel" class="panel-body"></div>
+      </div>
+
+      <div class="side-tab-content" data-tab-content="auto" hidden>
+        <p class="panel-hint">Select a clip on the timeline first.</p>
+        <button id="detectSilenceBtn" class="btn btn-secondary btn-block">🔇 Remove Silence</button>
+        <button id="detectScenesBtn" class="btn btn-secondary btn-block">🎞 Auto-Split on Scene Changes</button>
+      </div>
+    </aside>
+  </main>
+
+  <section class="ai-bar">
+    <button id="aiSettingsToggle" class="btn btn-icon" title="AI settings">⚙</button>
+    <input id="aiInput" type="text" placeholder='Tell the editor what to do — e.g. "add text \'Hello\' from 0 to 3 top center" or "zoom in on clip 1 from 2 to 5"' />
+    <button id="aiRunBtn" class="btn btn-primary">Run</button>
+  </section>
+
+  <div id="aiSettings" class="ai-settings" hidden>
+    <label>
+      <input type="checkbox" id="useClaudeToggle" /> Use Claude API for free-form natural language (optional)
+    </label>
+    <input id="claudeApiKey" type="password" placeholder="sk-ant-... (stored only in this browser)" />
+    <p class="panel-hint">Without a key, commands are matched against built-in patterns (split/cut/trim/zoom/text/speed/silence/scenes). With a key, you can phrase requests however you like.</p>
+  </div>
+
+  <footer class="timeline-pane">
+    <div class="timeline-toolbar">
+      <span id="statusLog" class="status-log">Ready.</span>
+      <div id="progressBar" class="progress-bar" hidden><div id="progressFill" class="progress-fill"></div></div>
+    </div>
+    <div id="timelineContainer" class="timeline-scroll"></div>
+  </footer>
+
+</div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
