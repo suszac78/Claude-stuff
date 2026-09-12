@@ -36,17 +36,27 @@ your own Claude API key.
   have Claude translate arbitrary free-form phrasing into the same action
   schema — the key is stored only in `localStorage` and sent only to
   `api.anthropic.com`.
-- **Content recognition (Claude Vision)**: the offline parser and even
-  Claude's text-only mode can't resolve vague references like *"speed up
-  until the last 3 cards"* or *"cut right when the pack is opened"* — they
-  have no idea what's in the footage. "🔍 Recognize Video Content" (in the
-  Auto-Cut tab, requires the Claude API key) samples frames from the
-  selected clip and sends them to Claude's vision endpoint, which returns a
-  timeline of what's actually happening (`0.0–4.2s — hand holds sealed pack
-  of cards`, etc.). That timeline is cached and automatically included as
-  context for every future AI command on that clip, so content-based
-  instructions can be resolved to real timestamps instead of you having to
-  scrub the timeline and type numbers yourself.
+- **Content recognition**: the offline parser and even Claude's text-only
+  mode can't resolve vague references like *"speed up until the last 3
+  cards"* or *"cut right when the pack is opened"* — they have no idea
+  what's in the footage. "🔍 Recognize Video Content" (Auto-Cut tab) samples
+  frames from the selected clip and analyzes them, producing a timeline of
+  what's actually happening. That timeline is cached and automatically fed
+  into every future AI command on that clip, so content-based instructions
+  can be resolved to real timestamps instead of you scrubbing the timeline
+  and typing numbers by hand. Two backends, same output shape:
+  - **Free, local, no account (default)**: runs
+    [TensorFlow.js](https://www.tensorflow.org/js) + the COCO-SSD object
+    detector entirely in your browser — no API key, no server, no cost to
+    anyone. It recognizes 80 common object classes (person, cup, phone,
+    chair, ...) and produces coarser labels like `visible: person, cup`.
+    The ~20MB model weights are fetched once per session from Google's
+    public model bucket the first time you use it.
+  - **Claude Vision (optional, needs your API key)**: if "Use Claude API"
+    is enabled with a key, this button uses Claude's vision model instead,
+    producing much richer, specific descriptions (`hand tears open a sealed
+    pack of cards`) since it isn't limited to a fixed class list — at the
+    cost of API usage on your key.
 - **Export**: renders the full timeline (trims, speed, zoom keyframes, text
   overlays) to a downloadable H.264/AAC MP4, entirely client-side via
   ffmpeg.wasm.
@@ -64,9 +74,13 @@ python3 -m http.server 8080
 
 or `npx serve .`, or any equivalent.
 
-No CDN is contacted at runtime: ffmpeg.wasm (core + JS glue) and the fonts
-used for exported text are vendored under `vendor/` and `assets/fonts/`, so
-the app works fully offline once served.
+Editing and export need no CDN at runtime: ffmpeg.wasm (core + JS glue), the
+fonts used for exported text, and the TensorFlow.js/COCO-SSD JS libraries are
+all vendored under `vendor/` and `assets/fonts/`. The one exception is the
+free local content-recognition feature, which fetches the ~20MB COCO-SSD
+model weights from Google's public `storage.googleapis.com` model bucket the
+first time you use it per session (see `vendor/tfjs/NOTICE.md`) — everything
+else works fully offline once served.
 
 ## Architecture
 
@@ -82,7 +96,8 @@ js/textOverlay.js        Text overlay property panel
 js/zoomEffect.js         Zoom keyframe property panel
 js/autoCut.js           Silence + scene-change detection
 js/aiCommands.js        NL command parser (offline) + optional Claude bridge + executor
-js/visionAnalysis.js     Claude Vision: frame sampling + content-timeline recognition
+js/visionAnalysis.js     Claude Vision: frame sampling + content-timeline recognition (paid, needs a key)
+js/localVision.js        TensorFlow.js/COCO-SSD: free local object recognition, no key needed
 js/exportPipeline.js    Builds the ffmpeg filter graph and renders the final MP4
 js/app.js               Wires everything to the DOM
 vendor/                Vendored ffmpeg.wasm packages (MIT) — see vendor/NOTICE.md
@@ -117,3 +132,8 @@ assets/fonts/           Roboto (Apache-2.0), used by drawtext on export
   a user's API key to client-side JS.
 - No audio mixing/ducking, transitions, or multi-track video compositing
   yet — single video track with overlay text/zoom is what's implemented.
+- The free local recognition path (COCO-SSD) only knows 80 generic object
+  classes — it can spot "person" or "cell phone" but has no concept of, say,
+  a specific card trick, so it can't produce the same specific descriptions
+  Claude Vision can. It's a real, useful, zero-cost floor, not a full
+  replacement for Claude Vision on content-specific instructions.

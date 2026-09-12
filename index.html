@@ -55,12 +55,15 @@
         <button id="detectScenesBtn" class="btn btn-secondary btn-block">🎞 Auto-Split on Scene Changes</button>
         <hr class="panel-divider" />
         <p class="panel-hint">
-          <strong>Recognize video content</strong> — has Claude actually watch the
-          selected clip's frames so the AI command bar can understand references
-          like "when the pack is opened" or "the last 3 cards". Requires the
-          Claude API key (⚙ below).
+          <strong>Recognize video content</strong> — scans the selected clip so the
+          AI command bar can understand content-based references like "when the
+          pack is opened" or "the last 3 cards", instead of you typing exact
+          timestamps. Free by default (runs a small object-recognition model
+          locally in your browser, no account or API key needed). If you've
+          enabled "Use Claude API" with a key below, this uses Claude's vision
+          model instead for richer, more specific descriptions.
         </p>
-        <button id="recognizeContentBtn" class="btn btn-secondary btn-block">🔍 Recognize Video Content</button>
+        <button id="recognizeContentBtn" class="btn btn-secondary btn-block">🔍 Recognize Video Content (Free)</button>
         <div id="contentAnalysisResult" class="content-analysis"></div>
       </div>
     </aside>

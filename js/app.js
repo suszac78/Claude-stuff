@@ -7,6 +7,7 @@ import { importVideoFile, SUPPORTED_EXTENSIONS } from './media.js';
 import { detectSilence, detectSceneChanges } from './autoCut.js';
 import { parseCommandOffline, parseCommandWithClaude, summarizeProject, executeActions } from './aiCommands.js';
 import { analyzeClipContent } from './visionAnalysis.js';
+import { analyzeClipContentLocal } from './localVision.js';
 import { exportProject, downloadBlob } from './exportPipeline.js';
 import { formatTime } from './utils.js';
 
@@ -196,20 +197,21 @@ function renderContentAnalysisPanel() {
 document.getElementById('recognizeContentBtn').addEventListener('click', async () => {
   const clip = selectedClip();
   if (!clip) return setStatus('Select a clip first.');
-  if (!useClaudeToggle.checked || !claudeApiKey.value) {
-    setStatus('Enable "Use Claude API" and enter a key (⚙ button) to recognize video content.');
-    document.getElementById('aiSettings').hidden = false;
-    return;
-  }
+
+  const useClaude = useClaudeToggle.checked && !!claudeApiKey.value;
   try {
-    setProgress(0.05, 'Recognizing video content...');
-    const segments = await analyzeClipContent(clip, claudeApiKey.value, {
-      onProgress: (msg) => setProgress(0.4, msg),
-    });
+    setProgress(0.05, useClaude ? 'Recognizing video content with Claude Vision...' : 'Recognizing video content (free, local, no API key)...');
+    const segments = useClaude
+      ? await analyzeClipContent(clip, claudeApiKey.value, { onProgress: (msg) => setProgress(0.4, msg) })
+      : await analyzeClipContentLocal(clip, { onProgress: (msg) => setProgress(0.4, msg) });
     state.setContentAnalysis(clip.id, segments);
     renderContentAnalysisPanel();
     setProgress(null);
-    setStatus(`Recognized ${segments.length} segment(s) — the AI command bar can now reference this clip's content.`);
+    setStatus(
+      useClaude
+        ? `Recognized ${segments.length} segment(s) with Claude Vision.`
+        : `Recognized ${segments.length} segment(s) locally (free) — for richer descriptions, enable "Use Claude API" with a key first.`
+    );
   } catch (err) {
     setProgress(null);
     setStatus(`Content recognition failed: ${err.message}`);
@@ -224,8 +226,23 @@ const claudeApiKey = document.getElementById('claudeApiKey');
 
 useClaudeToggle.checked = localStorage.getItem('novacut_use_claude') === '1';
 claudeApiKey.value = localStorage.getItem('novacut_claude_key') || '';
-useClaudeToggle.addEventListener('change', () => localStorage.setItem('novacut_use_claude', useClaudeToggle.checked ? '1' : '0'));
-claudeApiKey.addEventListener('change', () => localStorage.setItem('novacut_claude_key', claudeApiKey.value));
+
+function updateRecognizeBtnLabel() {
+  const btn = document.getElementById('recognizeContentBtn');
+  const usingClaude = useClaudeToggle.checked && !!claudeApiKey.value;
+  btn.textContent = usingClaude ? '🔍 Recognize Video Content (Claude Vision)' : '🔍 Recognize Video Content (Free)';
+}
+updateRecognizeBtnLabel();
+
+useClaudeToggle.addEventListener('change', () => {
+  localStorage.setItem('novacut_use_claude', useClaudeToggle.checked ? '1' : '0');
+  updateRecognizeBtnLabel();
+});
+claudeApiKey.addEventListener('change', () => {
+  localStorage.setItem('novacut_claude_key', claudeApiKey.value);
+  updateRecognizeBtnLabel();
+});
+claudeApiKey.addEventListener('input', updateRecognizeBtnLabel);
 
 document.getElementById('aiSettingsToggle').addEventListener('click', () => {
   const panel = document.getElementById('aiSettings');
