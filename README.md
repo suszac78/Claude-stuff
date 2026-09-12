@@ -24,18 +24,26 @@ your own Claude API key.
 - **Auto-cut**: silence detection (Web Audio RMS analysis) and scene-change
   detection (canvas frame-diff sampling) suggest — and can auto-apply — cut
   points on the selected clip.
-- **AI command bar**: type instructions like
-  - `split at 0:15`
-  - `add text 'Hello World' from 0 to 3 top center`
-  - `zoom in on clip 2 from 2 to 5`
-  - `remove silence from clip 1`
-  - `speed up clip 1 by 2x`
-
-  These are matched by a built-in offline parser (no network, no API key).
-  Optionally, paste an Anthropic API key in the AI settings panel (⚙) to
-  have Claude translate arbitrary free-form phrasing into the same action
-  schema — the key is stored only in `localStorage` and sent only to
-  `api.anthropic.com`.
+- **AI command bar**: three selectable modes (AI settings panel, ⚙), same
+  action schema underneath:
+  - **Pattern Matching (default)**: free, instant, fully offline. Only
+    understands exact phrasings like `split at 0:15`,
+    `add text 'Hello World' from 0 to 3 top center`,
+    `zoom in on clip 2 from 2 to 5`, `remove silence from clip 1`,
+    `speed up clip 1 by 2x`.
+  - **Free Local AI**: free, no account, *real* natural-language
+    understanding — phrase things however you like. Runs a small
+    instruction-tuned language model
+    ([Llama-3.2-1B-Instruct](https://huggingface.co/mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC))
+    entirely in your browser via WebGPU ([WebLLM](https://github.com/mlc-ai/web-llm)),
+    no server, no API key. Needs a WebGPU-capable browser (Chrome/Edge; not
+    Safari/Firefox by default) and a one-time ~880MB model download (cached
+    by the browser after that — see `vendor/webllm/NOTICE.md`). Being a
+    1B-parameter model, it's noticeably weaker than Claude at complex,
+    multi-clause instructions.
+  - **Claude API**: best quality, phrase requests however you like, at the
+    cost of API usage on your own key — paste it in the same panel; it's
+    stored only in `localStorage` and sent only to `api.anthropic.com`.
 - **Content recognition**: the offline parser and even Claude's text-only
   mode can't resolve vague references like *"speed up until the last 3
   cards"* or *"cut right when the pack is opened"* — they have no idea
@@ -95,7 +103,8 @@ js/timeline.js          Timeline UI: drag/trim/split/reorder
 js/textOverlay.js        Text overlay property panel
 js/zoomEffect.js         Zoom keyframe property panel
 js/autoCut.js           Silence + scene-change detection
-js/aiCommands.js        NL command parser (offline) + optional Claude bridge + executor
+js/aiCommands.js        NL command parser (offline) + Claude bridge + shared action schema + executor
+js/localLLM.js           WebLLM: free local NL command parsing via a small in-browser LLM, no key needed
 js/visionAnalysis.js     Claude Vision: frame sampling + content-timeline recognition (paid, needs a key)
 js/localVision.js        TensorFlow.js/COCO-SSD: free local object recognition, no key needed
 js/exportPipeline.js    Builds the ffmpeg filter graph and renders the final MP4
@@ -137,3 +146,8 @@ assets/fonts/           Roboto (Apache-2.0), used by drawtext on export
   a specific card trick, so it can't produce the same specific descriptions
   Claude Vision can. It's a real, useful, zero-cost floor, not a full
   replacement for Claude Vision on content-specific instructions.
+- Likewise, "Free Local AI" command parsing (WebLLM) is a real language
+  model, not pattern matching, but it's a 1B-parameter model running in a
+  browser tab — it will misparse or drop parts of long, multi-clause,
+  ambiguous instructions in a way Claude usually won't. It also requires
+  WebGPU (Chrome/Edge) and an ~880MB one-time download.

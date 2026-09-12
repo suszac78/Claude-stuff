@@ -8,6 +8,7 @@ import { detectSilence, detectSceneChanges } from './autoCut.js';
 import { parseCommandOffline, parseCommandWithClaude, summarizeProject, executeActions } from './aiCommands.js';
 import { analyzeClipContent } from './visionAnalysis.js';
 import { analyzeClipContentLocal } from './localVision.js';
+import { parseCommandWithLocalLLM } from './localLLM.js';
 import { exportProject, downloadBlob } from './exportPipeline.js';
 import { formatTime } from './utils.js';
 
@@ -198,7 +199,7 @@ document.getElementById('recognizeContentBtn').addEventListener('click', async (
   const clip = selectedClip();
   if (!clip) return setStatus('Select a clip first.');
 
-  const useClaude = useClaudeToggle.checked && !!claudeApiKey.value;
+  const useClaude = getAiMode() === 'claude' && !!claudeApiKey.value;
   try {
     setProgress(0.05, useClaude ? 'Recognizing video content with Claude Vision...' : 'Recognizing video content (free, local, no API key)...');
     const segments = useClaude
@@ -210,7 +211,7 @@ document.getElementById('recognizeContentBtn').addEventListener('click', async (
     setStatus(
       useClaude
         ? `Recognized ${segments.length} segment(s) with Claude Vision.`
-        : `Recognized ${segments.length} segment(s) locally (free) — for richer descriptions, enable "Use Claude API" with a key first.`
+        : `Recognized ${segments.length} segment(s) locally (free) — for richer descriptions, switch AI mode to Claude API.`
     );
   } catch (err) {
     setProgress(null);
@@ -221,28 +222,41 @@ document.getElementById('recognizeContentBtn').addEventListener('click', async (
 
 // --- AI command bar --------------------------------------------------------
 const aiInput = document.getElementById('aiInput');
-const useClaudeToggle = document.getElementById('useClaudeToggle');
 const claudeApiKey = document.getElementById('claudeApiKey');
+const aiModeRadios = Array.from(document.querySelectorAll('input[name="aiMode"]'));
 
-useClaudeToggle.checked = localStorage.getItem('novacut_use_claude') === '1';
+function getAiMode() {
+  return (aiModeRadios.find((r) => r.checked) || {}).value || 'pattern';
+}
+
+const savedMode = localStorage.getItem('novacut_ai_mode');
+if (savedMode) {
+  const radio = aiModeRadios.find((r) => r.value === savedMode);
+  if (radio) radio.checked = true;
+}
 claudeApiKey.value = localStorage.getItem('novacut_claude_key') || '';
 
-function updateRecognizeBtnLabel() {
+function updateAiModeUI() {
+  const mode = getAiMode();
+  claudeApiKey.hidden = mode !== 'claude';
   const btn = document.getElementById('recognizeContentBtn');
-  const usingClaude = useClaudeToggle.checked && !!claudeApiKey.value;
-  btn.textContent = usingClaude ? '🔍 Recognize Video Content (Claude Vision)' : '🔍 Recognize Video Content (Free)';
+  btn.textContent = mode === 'claude' && claudeApiKey.value
+    ? '🔍 Recognize Video Content (Claude Vision)'
+    : '🔍 Recognize Video Content (Free)';
 }
-updateRecognizeBtnLabel();
+updateAiModeUI();
 
-useClaudeToggle.addEventListener('change', () => {
-  localStorage.setItem('novacut_use_claude', useClaudeToggle.checked ? '1' : '0');
-  updateRecognizeBtnLabel();
-});
+for (const radio of aiModeRadios) {
+  radio.addEventListener('change', () => {
+    localStorage.setItem('novacut_ai_mode', getAiMode());
+    updateAiModeUI();
+  });
+}
 claudeApiKey.addEventListener('change', () => {
   localStorage.setItem('novacut_claude_key', claudeApiKey.value);
-  updateRecognizeBtnLabel();
+  updateAiModeUI();
 });
-claudeApiKey.addEventListener('input', updateRecognizeBtnLabel);
+claudeApiKey.addEventListener('input', updateAiModeUI);
 
 document.getElementById('aiSettingsToggle').addEventListener('click', () => {
   const panel = document.getElementById('aiSettings');
@@ -253,27 +267,45 @@ async function runAiCommand() {
   const text = aiInput.value.trim();
   if (!text) return;
   aiInput.value = '';
-  setStatus(`Running: "${text}"`);
+  const mode = getAiMode();
 
-  if (useClaudeToggle.checked && claudeApiKey.value) {
+  if (mode === 'claude' && claudeApiKey.value) {
+    setStatus(`Asking Claude: "${text}"`);
     try {
       const actions = await parseCommandWithClaude(text, claudeApiKey.value, summarizeProject(state));
       await executeActions(state, actions, { onLog: setStatus });
       setStatus(`Done: ${text}`);
-      return;
     } catch (err) {
-      setStatus(`Claude request failed (${err.message}); falling back to offline parser.`);
+      setStatus(`Claude request failed: ${err.message}`);
     }
+    return;
   }
 
+  if (mode === 'local-llm') {
+    try {
+      const actions = await parseCommandWithLocalLLM(text, summarizeProject(state), {
+        onProgress: (msg, progress) => setProgress(Math.min(0.95, progress || 0.1), msg),
+      });
+      setProgress(null);
+      await executeActions(state, actions, { onLog: setStatus });
+      setStatus(`Done (free local AI): ${text}`);
+    } catch (err) {
+      setProgress(null);
+      setStatus(`Free local AI failed: ${err.message}`);
+      console.error(err);
+    }
+    return;
+  }
+
+  setStatus(`Running: "${text}"`);
   const { actions, unrecognized } = parseCommandOffline(text);
   await executeActions(state, actions, { onLog: setStatus });
   if (unrecognized.length) {
-    setStatus(`Applied ${actions.length} action(s). Didn't understand: "${unrecognized.join('; ')}"`);
+    setStatus(`Applied ${actions.length} action(s). Didn't understand: "${unrecognized.join('; ')}" — try "Free Local AI" mode (⚙) for free-form phrasing.`);
   } else if (actions.length) {
     setStatus(`Applied: ${text}`);
   } else {
-    setStatus(`Didn't recognize that command. Try "split at 0:10" or "add text 'Hi' from 0 to 3".`);
+    setStatus(`Didn't recognize that command. Try "split at 0:10", or switch to "Free Local AI" mode (⚙) for free-form phrasing.`);
   }
 }
 

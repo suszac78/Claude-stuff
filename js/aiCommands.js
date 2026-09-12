@@ -110,7 +110,7 @@ export function parseCommandOffline(text) {
 // api.anthropic.com). Falls back gracefully if no key is set.
 // ---------------------------------------------------------------------------
 
-const SYSTEM_PROMPT = `You control a video editor by emitting a JSON array of actions.
+export const AI_ACTION_SYSTEM_PROMPT = `You control a video editor by emitting a JSON array of actions.
 Valid action objects (omit fields you don't need):
 {"type":"split","at":seconds}
 {"type":"delete","clipIndex":0-based}
@@ -130,6 +130,15 @@ opened", "the last 3 cards", "cut the boring part", "right before he speaks"
 instruction depends on visual content and no contentTimeline is present for
 the relevant clip, do your best from the clip name/duration alone, or return
 an empty array if it truly cannot be resolved.
+
+Examples:
+Instruction: "cut the first 3 seconds"
+[{"type":"split","at":3},{"type":"delete","clipIndex":0}]
+Instruction: "add the caption 'Hi there' for the first 2 seconds"
+[{"type":"addText","text":"Hi there","start":0,"end":2}]
+Instruction: "make clip 1 twice as fast"
+[{"type":"setSpeed","clipIndex":0,"speed":2}]
+
 Respond with ONLY the JSON array, no prose, no markdown fences.`;
 
 export async function parseCommandWithClaude(text, apiKey, projectSummary) {
@@ -144,7 +153,7 @@ export async function parseCommandWithClaude(text, apiKey, projectSummary) {
     body: JSON.stringify({
       model: 'claude-sonnet-5',
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: AI_ACTION_SYSTEM_PROMPT,
       messages: [
         { role: 'user', content: `Project state:\n${projectSummary}\n\nInstruction: ${text}` },
       ],

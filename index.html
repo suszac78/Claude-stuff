@@ -76,11 +76,26 @@
   </section>
 
   <div id="aiSettings" class="ai-settings" hidden>
-    <label>
-      <input type="checkbox" id="useClaudeToggle" /> Use Claude API for free-form natural language (optional)
+    <p class="panel-hint"><strong>AI command bar mode</strong> — how your typed instructions get turned into edits:</p>
+    <label class="ai-mode-option">
+      <input type="radio" name="aiMode" id="aiModePattern" value="pattern" checked />
+      <span><strong>Pattern Matching</strong> — free, instant, offline. Only understands exact phrasings like
+      <code>split at 0:10</code>, <code>zoom in on clip 1 from 2 to 5</code>, <code>speed up clip 1 by 2x</code>.</span>
     </label>
-    <input id="claudeApiKey" type="password" placeholder="sk-ant-... (stored only in this browser)" />
-    <p class="panel-hint">Without a key, commands are matched against built-in patterns (split/cut/trim/zoom/text/speed/silence/scenes). With a key, you can phrase requests however you like.</p>
+    <label class="ai-mode-option">
+      <input type="radio" name="aiMode" id="aiModeLocalLlm" value="local-llm" />
+      <span><strong>Free Local AI</strong> — free, no account, real language understanding. Downloads a small
+      (~880MB, one-time, cached by your browser) AI model and runs it on your device via WebGPU
+      (Chrome/Edge only). Weaker than Claude at complex, multi-step instructions.</span>
+    </label>
+    <label class="ai-mode-option">
+      <input type="radio" name="aiMode" id="aiModeClaude" value="claude" />
+      <span><strong>Claude API</strong> — best quality, phrase requests however you like, but costs API usage on
+      your own key.</span>
+    </label>
+    <input id="claudeApiKey" type="password" placeholder="sk-ant-... (stored only in this browser)" hidden />
+    <p class="panel-hint">This same setting also controls whether "🔍 Recognize Video Content" uses the free local
+    model or Claude Vision.</p>
   </div>
 
   <footer class="timeline-pane">
