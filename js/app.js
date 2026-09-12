@@ -269,12 +269,21 @@ async function runAiCommand() {
   aiInput.value = '';
   const mode = getAiMode();
 
+  async function reportAndExecute(actions, sourceLabel) {
+    console.log(`${sourceLabel} returned actions for "${text}":`, actions);
+    if (!actions || actions.length === 0) {
+      setStatus(`${sourceLabel} understood the request but produced no edits — it likely couldn't work out concrete timestamps from "${text}". Try being more specific (exact seconds), or splitting it into separate, simpler commands.`);
+      return;
+    }
+    await executeActions(state, actions, { onLog: setStatus });
+    setStatus(`Applied ${actions.length} action(s) from ${sourceLabel}: ${actions.map((a) => a.type).join(', ')}`);
+  }
+
   if (mode === 'claude' && claudeApiKey.value) {
     setStatus(`Asking Claude: "${text}"`);
     try {
       const actions = await parseCommandWithClaude(text, claudeApiKey.value, summarizeProject(state));
-      await executeActions(state, actions, { onLog: setStatus });
-      setStatus(`Done: ${text}`);
+      await reportAndExecute(actions, 'Claude');
     } catch (err) {
       setStatus(`Claude request failed: ${err.message}`);
     }
@@ -287,8 +296,7 @@ async function runAiCommand() {
         onProgress: (msg, progress) => setProgress(Math.min(0.95, progress || 0.1), msg),
       });
       setProgress(null);
-      await executeActions(state, actions, { onLog: setStatus });
-      setStatus(`Done (free local AI): ${text}`);
+      await reportAndExecute(actions, 'the free local AI');
     } catch (err) {
       setProgress(null);
       setStatus(`Free local AI failed: ${err.message}`);
