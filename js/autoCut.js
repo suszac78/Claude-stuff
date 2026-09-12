@@ -88,7 +88,7 @@ export async function detectSceneChanges(clip, { intervalSec = 0.5, diffThreshol
   return cuts;
 }
 
-function seekTo(video, time) {
+export function seekTo(video, time) {
   return new Promise((resolve) => {
     const onSeeked = () => {
       video.removeEventListener('seeked', onSeeked);

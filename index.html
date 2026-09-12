@@ -53,6 +53,15 @@
         <p class="panel-hint">Select a clip on the timeline first.</p>
         <button id="detectSilenceBtn" class="btn btn-secondary btn-block">🔇 Remove Silence</button>
         <button id="detectScenesBtn" class="btn btn-secondary btn-block">🎞 Auto-Split on Scene Changes</button>
+        <hr class="panel-divider" />
+        <p class="panel-hint">
+          <strong>Recognize video content</strong> — has Claude actually watch the
+          selected clip's frames so the AI command bar can understand references
+          like "when the pack is opened" or "the last 3 cards". Requires the
+          Claude API key (⚙ below).
+        </p>
+        <button id="recognizeContentBtn" class="btn btn-secondary btn-block">🔍 Recognize Video Content</button>
+        <div id="contentAnalysisResult" class="content-analysis"></div>
       </div>
     </aside>
   </main>

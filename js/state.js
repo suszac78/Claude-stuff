@@ -62,6 +62,7 @@ export class EditorState {
     this.playhead = 0;
     this.playing = false;
     this.selection = { type: null, id: null };
+    this.contentAnalysis = new Map(); // clipId -> [{start,end,description}]
     this.listeners = new Set();
   }
 
@@ -84,6 +85,7 @@ export class EditorState {
   removeClip(clipId) {
     this.clips = this.clips.filter((c) => c.id !== clipId);
     this.zoomKeyframes = this.zoomKeyframes.filter((z) => z.clipId !== clipId);
+    this.contentAnalysis.delete(clipId);
     this.emit('clips');
   }
 
@@ -147,6 +149,8 @@ export class EditorState {
     const second = { ...clip, id: uid('clip'), inPoint: splitSourceOffset };
     clip.outPoint = splitSourceOffset;
     this.clips.splice(idx + 1, 0, second);
+    // A split invalidates any cached content analysis spanning the old range.
+    this.contentAnalysis.delete(clip.id);
     // Re-home zoom keyframes that fell in the second half.
     const movedZooms = this.zoomKeyframes.filter((z) => z.clipId === clip.id && z.start >= localTime);
     for (const z of movedZooms) {
@@ -219,6 +223,15 @@ export class EditorState {
 
   activeTextOverlays(globalTime) {
     return this.textOverlays.filter((o) => globalTime >= o.start && globalTime < o.end);
+  }
+
+  setContentAnalysis(clipId, segments) {
+    this.contentAnalysis.set(clipId, segments);
+    this.emit('content');
+  }
+
+  getContentAnalysis(clipId) {
+    return this.contentAnalysis.get(clipId) || null;
   }
 
   serialize() {

@@ -121,6 +121,15 @@ Valid action objects (omit fields you don't need):
 {"type":"addZoom","clipIndex":n,"start":sec,"end":sec,"fromScale":n,"toScale":n,"fromX":0-100,"fromY":0-100,"toX":0-100,"toY":0-100}
 {"type":"removeSilence","clipIndex":n}
 {"type":"detectScenes","clipIndex":n}
+Some clips include a "contentTimeline": an array of {start,end,description}
+produced by watching the actual video frames, describing what is visibly
+happening across that clip in seconds relative to its own (trimmed) start.
+Use it to resolve vague, content-based instructions — "when the pack is
+opened", "the last 3 cards", "cut the boring part", "right before he speaks"
+— into concrete numeric start/end/at seconds before emitting actions. If an
+instruction depends on visual content and no contentTimeline is present for
+the relevant clip, do your best from the clip name/duration alone, or return
+an empty array if it truly cannot be resolved.
 Respond with ONLY the JSON array, no prose, no markdown fences.`;
 
 export async function parseCommandWithClaude(text, apiKey, projectSummary) {
@@ -160,6 +169,7 @@ export function summarizeProject(state) {
       name: c.name,
       durationSec: +state.clipDuration(c).toFixed(2),
       speed: c.speed,
+      contentTimeline: state.getContentAnalysis(c.id) || undefined,
     })),
     textOverlays: state.textOverlays.map((o, i) => ({ index: i, text: o.text, start: o.start, end: o.end })),
     totalDurationSec: +state.totalDuration().toFixed(2),

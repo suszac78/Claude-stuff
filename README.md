@@ -36,6 +36,17 @@ your own Claude API key.
   have Claude translate arbitrary free-form phrasing into the same action
   schema — the key is stored only in `localStorage` and sent only to
   `api.anthropic.com`.
+- **Content recognition (Claude Vision)**: the offline parser and even
+  Claude's text-only mode can't resolve vague references like *"speed up
+  until the last 3 cards"* or *"cut right when the pack is opened"* — they
+  have no idea what's in the footage. "🔍 Recognize Video Content" (in the
+  Auto-Cut tab, requires the Claude API key) samples frames from the
+  selected clip and sends them to Claude's vision endpoint, which returns a
+  timeline of what's actually happening (`0.0–4.2s — hand holds sealed pack
+  of cards`, etc.). That timeline is cached and automatically included as
+  context for every future AI command on that clip, so content-based
+  instructions can be resolved to real timestamps instead of you having to
+  scrub the timeline and type numbers yourself.
 - **Export**: renders the full timeline (trims, speed, zoom keyframes, text
   overlays) to a downloadable H.264/AAC MP4, entirely client-side via
   ffmpeg.wasm.
@@ -71,6 +82,7 @@ js/textOverlay.js        Text overlay property panel
 js/zoomEffect.js         Zoom keyframe property panel
 js/autoCut.js           Silence + scene-change detection
 js/aiCommands.js        NL command parser (offline) + optional Claude bridge + executor
+js/visionAnalysis.js     Claude Vision: frame sampling + content-timeline recognition
 js/exportPipeline.js    Builds the ffmpeg filter graph and renders the final MP4
 js/app.js               Wires everything to the DOM
 vendor/                Vendored ffmpeg.wasm packages (MIT) — see vendor/NOTICE.md

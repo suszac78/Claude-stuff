@@ -6,6 +6,7 @@ import { ZoomEffectPanel } from './zoomEffect.js';
 import { importVideoFile, SUPPORTED_EXTENSIONS } from './media.js';
 import { detectSilence, detectSceneChanges } from './autoCut.js';
 import { parseCommandOffline, parseCommandWithClaude, summarizeProject, executeActions } from './aiCommands.js';
+import { analyzeClipContent } from './visionAnalysis.js';
 import { exportProject, downloadBlob } from './exportPipeline.js';
 import { formatTime } from './utils.js';
 
@@ -56,6 +57,7 @@ function refreshSidePanel() {
   else textPanel.renderEmpty();
   if (state.selection.type === 'zoom') zoomPanel.renderFor(state.selection.id);
   else zoomPanel.renderEmpty();
+  renderContentAnalysisPanel();
 }
 
 state.on(() => rerenderAll());
@@ -170,6 +172,49 @@ document.getElementById('detectScenesBtn').addEventListener('click', async () =>
   const idx = state.clips.indexOf(clip);
   setStatus('Scanning for scene changes...');
   await executeActions(state, [{ type: 'detectScenes', clipIndex: idx }], { onLog: setStatus });
+});
+
+function renderContentAnalysisPanel() {
+  const container = document.getElementById('contentAnalysisResult');
+  const clip = selectedClip();
+  container.innerHTML = '';
+  if (!clip) return;
+  const segments = state.getContentAnalysis(clip.id);
+  if (!segments) return;
+  for (const seg of segments) {
+    const item = document.createElement('div');
+    item.className = 'content-analysis-item';
+    const ts = document.createElement('span');
+    ts.className = 'ts';
+    ts.textContent = `${formatTime(seg.start, false)}–${formatTime(seg.end, false)}`;
+    item.appendChild(ts);
+    item.appendChild(document.createTextNode(seg.description));
+    container.appendChild(item);
+  }
+}
+
+document.getElementById('recognizeContentBtn').addEventListener('click', async () => {
+  const clip = selectedClip();
+  if (!clip) return setStatus('Select a clip first.');
+  if (!useClaudeToggle.checked || !claudeApiKey.value) {
+    setStatus('Enable "Use Claude API" and enter a key (⚙ button) to recognize video content.');
+    document.getElementById('aiSettings').hidden = false;
+    return;
+  }
+  try {
+    setProgress(0.05, 'Recognizing video content...');
+    const segments = await analyzeClipContent(clip, claudeApiKey.value, {
+      onProgress: (msg) => setProgress(0.4, msg),
+    });
+    state.setContentAnalysis(clip.id, segments);
+    renderContentAnalysisPanel();
+    setProgress(null);
+    setStatus(`Recognized ${segments.length} segment(s) — the AI command bar can now reference this clip's content.`);
+  } catch (err) {
+    setProgress(null);
+    setStatus(`Content recognition failed: ${err.message}`);
+    console.error(err);
+  }
 });
 
 // --- AI command bar --------------------------------------------------------

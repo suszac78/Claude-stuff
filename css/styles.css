@@ -135,6 +135,17 @@ body {
 .side-tab-content { padding: 14px; overflow-y: auto; flex: 1; }
 
 .panel-hint { color: var(--text-dim); font-size: 12px; line-height: 1.5; }
+.panel-divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+.content-analysis { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.content-analysis-item {
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.content-analysis-item .ts { color: var(--accent-2); font-variant-numeric: tabular-nums; margin-right: 6px; }
 .field-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0; }
 .field-row label { color: var(--text-dim); font-size: 12px; }
 .field-row input, .field-row select { width: 140px; }
