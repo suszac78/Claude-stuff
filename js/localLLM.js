@@ -15,21 +15,58 @@ export function isSupported() {
   return typeof navigator !== 'undefined' && !!navigator.gpu;
 }
 
+const MAX_LOAD_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 1500;
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Downloading ~880MB across many shard requests means *some* single request
+// hiccupping (a dropped connection, a flaky wifi packet) is common, not
+// exceptional. WebLLM's cache layer treats any such hiccup as a hard
+// failure, so we retry the whole load a few times before giving up — and,
+// importantly, never cache a *rejected* promise, otherwise every future
+// attempt would just replay the same stale failure without ever touching
+// the network again.
 let enginePromise = null;
 
 export async function ensureEngine({ onProgress } = {}) {
   if (!isSupported()) {
     throw new Error('This browser has no WebGPU support (try Chrome or Edge) — the free local AI needs it.');
   }
-  if (!enginePromise) {
-    enginePromise = (async () => {
-      const webllm = await import(/* webpackIgnore: true */ /* @vite-ignore */ WEBLLM_MODULE);
-      return webllm.CreateMLCEngine(MODEL_ID, {
-        initProgressCallback: (report) => onProgress && onProgress(report.text, report.progress),
-      });
-    })();
+  if (enginePromise) return enginePromise;
+
+  const attempt = (async () => {
+    const webllm = await import(/* webpackIgnore: true */ /* @vite-ignore */ WEBLLM_MODULE);
+    let lastError;
+    for (let i = 1; i <= MAX_LOAD_ATTEMPTS; i++) {
+      try {
+        return await webllm.CreateMLCEngine(MODEL_ID, {
+          initProgressCallback: (report) => onProgress && onProgress(report.text, report.progress),
+        });
+      } catch (err) {
+        lastError = err;
+        const isLastAttempt = i === MAX_LOAD_ATTEMPTS;
+        onProgress && onProgress(
+          isLastAttempt
+            ? `Download failed (${err.message}). Giving up after ${MAX_LOAD_ATTEMPTS} attempts.`
+            : `Download hiccupped (${err.message}) — retrying (${i}/${MAX_LOAD_ATTEMPTS})...`,
+          0
+        );
+        if (!isLastAttempt) await delay(RETRY_DELAY_MS * i);
+      }
+    }
+    throw lastError;
+  })();
+
+  enginePromise = attempt;
+  try {
+    return await attempt;
+  } catch (err) {
+    enginePromise = null; // don't poison future attempts with this rejection
+    throw err;
   }
-  return enginePromise;
 }
 
 export async function parseCommandWithLocalLLM(text, projectSummary, { onProgress } = {}) {
