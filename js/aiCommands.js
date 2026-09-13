@@ -128,8 +128,12 @@ Use it to resolve vague, content-based instructions — "when the pack is
 opened", "the last 3 cards", "cut the boring part", "right before he speaks"
 — into concrete numeric start/end/at seconds before emitting actions. If an
 instruction depends on visual content and no contentTimeline is present for
-the relevant clip, do your best from the clip name/duration alone, or return
-an empty array if it truly cannot be resolved.
+the relevant clip, do your best from the clip name/duration alone. Never
+guess a placeholder number (like 0, or the exact clip duration) just to
+produce *some* action — an action with a made-up timestamp is worse than no
+action, since it silently does the wrong thing. Omit any part of the
+instruction you can't confidently turn into a real number, and return an
+empty array if none of it can be resolved.
 
 Examples:
 Instruction: "cut the first 3 seconds"
@@ -189,17 +193,29 @@ export function summarizeProject(state) {
 // Executor: applies a validated action list to the shared EditorState.
 // ---------------------------------------------------------------------------
 
+// Returns a results array [{type, applied, note}] so callers can tell a
+// genuine no-op (e.g. a guessed "split at 0" that the timeline correctly
+// refused, since it's at the very edge of a clip) apart from a real edit —
+// both look identical from just "did executeActions throw or not".
 export async function executeActions(state, actions, { onLog } = {}) {
   const log = (msg) => onLog && onLog(msg);
+  const results = [];
   for (const action of actions) {
     try {
-      await executeOne(state, action, log);
+      const note = await executeOne(state, action, log);
+      // executeOne returns undefined on a real edit, or a string explaining
+      // why it was a no-op — a returned string always means "not applied".
+      results.push({ type: action.type, applied: note == null, note: note || undefined });
     } catch (err) {
       log(`⚠️ Failed to apply ${action.type}: ${err.message}`);
+      results.push({ type: action.type, applied: false, note: err.message });
     }
   }
+  return results;
 }
 
+// Returns `false` (or a string note) when the action was a legitimate no-op,
+// so executeActions can report it as such instead of a silent success.
 async function executeOne(state, action, log) {
   const clipAt = (idx) => {
     if (idx == null) return undefined;
@@ -210,49 +226,55 @@ async function executeOne(state, action, log) {
 
   switch (action.type) {
     case 'split': {
-      state.splitClipAt(action.at);
+      const result = state.splitClipAt(action.at);
+      if (!result) {
+        return `split at ${action.at}s had no effect (too close to a clip's start/end, or out of range)`;
+      }
       log(`Split at ${action.at}s`);
-      break;
+      return;
     }
     case 'delete': {
       const clip = clipAt(action.clipIndex);
       state.removeClip(clip.id);
       log(`Deleted clip ${action.clipIndex + 1}`);
-      break;
+      return;
     }
     case 'trim': {
       const clip = clipAt(action.clipIndex);
       state.trimClip(clip.id, { inPoint: action.inPoint, outPoint: action.outPoint });
       log(`Trimmed clip ${action.clipIndex + 1}`);
-      break;
+      return;
     }
     case 'setSpeed': {
       const clip = clipAt(action.clipIndex);
       state.setClipSpeed(clip.id, action.speed);
       log(`Set clip ${action.clipIndex + 1} speed to ${action.speed}x`);
-      break;
+      return;
     }
     case 'addText': {
       state.addTextOverlay(action);
       log(`Added text "${action.text}"`);
-      break;
+      return;
     }
     case 'deleteText': {
       const overlay = state.textOverlays[action.index];
-      if (overlay) state.removeTextOverlay(overlay.id);
-      break;
+      if (!overlay) return `no text overlay at index ${action.index}`;
+      state.removeTextOverlay(overlay.id);
+      return;
     }
     case 'addZoom': {
       const clip = clipAt(action.clipIndex);
       state.addZoomKeyframe({ ...action, clipId: clip.id });
       log(`Added zoom on clip ${action.clipIndex + 1}`);
-      break;
+      return;
     }
     case 'removeSilence': {
       const targets = action.clipIndex != null ? [state.clips[action.clipIndex]] : state.clips;
+      let totalGaps = 0;
       for (const clip of targets) {
         if (!clip) continue;
         const gaps = await detectSilence(clip);
+        totalGaps += gaps.length;
         // Remove from the end backwards so earlier offsets stay valid.
         for (const gap of gaps.slice().reverse()) {
           const globalStart = state.clipGlobalStart(clip.id) + gap.start;
@@ -264,19 +286,23 @@ async function executeOne(state, action, log) {
         }
         log(`Removed ${gaps.length} silent gap(s) from clip`);
       }
-      break;
+      if (totalGaps === 0) return 'no silence detected';
+      return;
     }
     case 'detectScenes': {
       const targets = action.clipIndex != null ? [state.clips[action.clipIndex]] : state.clips;
+      let totalCuts = 0;
       for (const clip of targets) {
         if (!clip) continue;
         const cuts = await detectSceneChanges(clip);
+        totalCuts += cuts.length;
         for (const t of cuts) {
           state.splitClipAt(state.clipGlobalStart(clip.id) + t);
         }
         log(`Found ${cuts.length} scene change(s)`);
       }
-      break;
+      if (totalCuts === 0) return 'no scene changes detected';
+      return;
     }
     default:
       throw new Error(`unknown action type "${action.type}"`);

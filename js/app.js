@@ -275,8 +275,17 @@ async function runAiCommand() {
       setStatus(`${sourceLabel} understood the request but produced no edits — it likely couldn't work out concrete timestamps from "${text}". Try being more specific (exact seconds), or splitting it into separate, simpler commands.`);
       return;
     }
-    await executeActions(state, actions, { onLog: setStatus });
-    setStatus(`Applied ${actions.length} action(s) from ${sourceLabel}: ${actions.map((a) => a.type).join(', ')}`);
+    const results = await executeActions(state, actions, { onLog: setStatus });
+    console.log(`${sourceLabel} execution results:`, results);
+    const applied = results.filter((r) => r.applied);
+    const skipped = results.filter((r) => !r.applied);
+    if (applied.length === 0) {
+      setStatus(`${sourceLabel} tried ${results.length} action(s) but none had any effect: ${skipped.map((r) => r.note || r.type).join('; ')}. Try being more specific, or use exact seconds.`);
+    } else if (skipped.length > 0) {
+      setStatus(`Applied ${applied.length}/${results.length} action(s) from ${sourceLabel} (${applied.map((r) => r.type).join(', ')}); skipped: ${skipped.map((r) => r.note || r.type).join('; ')}`);
+    } else {
+      setStatus(`Applied ${applied.length} action(s) from ${sourceLabel}: ${applied.map((r) => r.type).join(', ')}`);
+    }
   }
 
   if (mode === 'claude' && claudeApiKey.value) {
@@ -307,9 +316,13 @@ async function runAiCommand() {
 
   setStatus(`Running: "${text}"`);
   const { actions, unrecognized } = parseCommandOffline(text);
-  await executeActions(state, actions, { onLog: setStatus });
+  const results = actions.length ? await executeActions(state, actions, { onLog: setStatus }) : [];
+  const applied = results.filter((r) => r.applied);
+  const skipped = results.filter((r) => !r.applied);
   if (unrecognized.length) {
-    setStatus(`Applied ${actions.length} action(s). Didn't understand: "${unrecognized.join('; ')}" — try "Free Local AI" mode (⚙) for free-form phrasing.`);
+    setStatus(`Applied ${applied.length} action(s). Didn't understand: "${unrecognized.join('; ')}" — try "Free Local AI" mode (⚙) for free-form phrasing.`);
+  } else if (skipped.length > 0 && applied.length === 0) {
+    setStatus(`No effect: ${skipped.map((r) => r.note || r.type).join('; ')}`);
   } else if (actions.length) {
     setStatus(`Applied: ${text}`);
   } else {
