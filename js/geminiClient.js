@@ -54,9 +54,16 @@ export async function parseCommandWithGemini(text, apiKey, projectSummary) {
   return extractActionsFromText(raw);
 }
 
+// Gemini has no meaningful per-request image limit (unlike Claude's ~20),
+// so it gets much denser sampling — close to 1 frame/sec for clips up to
+// 60s — rather than the 16-frame default tuned for Claude's cap. Coarser
+// sampling was the confirmed root cause of short (~1-2s) events getting
+// missed entirely even after running recognition.
+const GEMINI_MAX_FRAMES = 60;
+
 export async function analyzeClipContentWithGemini(clip, apiKey, { onProgress } = {}) {
   onProgress && onProgress('Sampling frames from clip...');
-  const { frames, localDur } = await sampleFrames(clip);
+  const { frames, localDur } = await sampleFrames(clip, { maxFrames: GEMINI_MAX_FRAMES });
 
   onProgress && onProgress(`Asking Gemini to watch ${frames.length} frames...`);
   const parts = [{ text: visionIntroText(frames.length, localDur) }];
@@ -66,7 +73,7 @@ export async function analyzeClipContentWithGemini(clip, apiKey, { onProgress } 
   }
   parts.push({ text: visionAskText(localDur) });
 
-  const raw = await callGemini(apiKey, { parts, maxOutputTokens: 3072 });
+  const raw = await callGemini(apiKey, { parts, maxOutputTokens: 4096 });
   const arrayStart = raw.indexOf('[');
   if (arrayStart === -1) throw new Error('Could not find a JSON timeline in the response');
   // Same salvage approach as extractActionsFromText: keep whatever complete

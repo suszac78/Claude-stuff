@@ -9,7 +9,17 @@ const FRAME_H = 216;
 // Samples evenly-spaced frames across a clip's *trimmed* local timeline and
 // returns them as small base64 JPEGs (cheap enough to send several to a
 // vision model in one request). Shared by every vision backend (Claude,
-// Gemini) so the sampling strategy only has to be tuned once.
+// Gemini) so the sampling strategy only has to be tuned once — but each
+// caller should pick its own `maxFrames`: the default here (16) is sized
+// for Claude's Messages API, which rejects requests over ~20 images.
+// Gemini has no such limit and is built around multi-image/video
+// understanding, so its caller passes a much higher value.
+//
+// maxFrames directly sets temporal resolution: at 16 frames, a 43s clip
+// samples roughly once every 2.7s, which is coarse enough to miss a short
+// (~1-2s) event entirely — confirmed as the actual cause of a real report
+// where "the last 3 cards" and a "2 sec gap" couldn't be resolved even
+// after running content recognition.
 export async function sampleFrames(clip, { maxFrames = 16, minFrames = 4 } = {}) {
   const video = document.createElement('video');
   video.src = clip.url;
