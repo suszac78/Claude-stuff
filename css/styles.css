@@ -161,8 +161,7 @@ input, select, textarea {
 label > span { margin-left: 6px; }
 
 .ai-command-area {
-  max-height: 45vh;
-  overflow-y: auto;
+  position: relative;
 }
 .ai-bar {
   display: flex;
@@ -171,18 +170,26 @@ label > span { margin-left: 6px; }
   padding: 10px 16px;
   background: var(--bg-2);
   border-top: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 1;
 }
 .ai-bar input { flex: 1; padding: 10px 12px; font-size: 13px; }
+/* Floats above the command bar instead of pushing the layout around — the
+   settings list keeps growing (modes, tiers, key fields) and must never be
+   able to squeeze the video preview above it. */
 .ai-settings {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  max-height: 65vh;
+  overflow-y: auto;
   padding: 10px 16px;
   background: var(--bg-3);
   border-top: 1px solid var(--border);
+  box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
   gap: 8px;
+  z-index: 20;
 }
 .ai-settings input[type="password"] { width: 320px; }
 .ai-mode-option {
