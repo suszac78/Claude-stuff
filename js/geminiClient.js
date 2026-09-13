@@ -17,7 +17,11 @@ import { sampleFrames, visionIntroText, visionAskText, filterSegments } from './
 const GEMINI_MODEL = 'gemini-3.6-flash';
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-async function callGemini(apiKey, { systemInstruction, parts, maxOutputTokens = 1536 }) {
+// Exported so other Gemini-powered features (e.g. card identification in
+// cardPricing.js) share the exact same request plumbing — auth, model
+// selection, safety-filter/empty-response handling — instead of a second
+// slightly-different copy.
+export async function callGemini(apiKey, { systemInstruction, parts, maxOutputTokens = 1536 }) {
   const res = await fetch(`${API_BASE}/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

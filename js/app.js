@@ -10,6 +10,7 @@ import { analyzeClipContent } from './visionAnalysis.js';
 import { analyzeClipContentLocal } from './localVision.js';
 import { parseCommandWithLocalLLM, MODEL_TIERS } from './localLLM.js';
 import { parseCommandWithGemini, analyzeClipContentWithGemini } from './geminiClient.js';
+import { lookupCardPriceAtTime } from './cardPricing.js';
 import { exportProject, downloadBlob } from './exportPipeline.js';
 import { formatTime } from './utils.js';
 
@@ -228,10 +229,63 @@ document.getElementById('recognizeContentBtn').addEventListener('click', async (
   }
 });
 
+document.getElementById('cardPriceBtn').addEventListener('click', async () => {
+  if (state.clips.length === 0) return setStatus('Import a clip first.');
+  if (!geminiApiKey.value) {
+    setStatus('Card price lookup needs a Gemini API key (⚙ settings) — it identifies the card via Gemini vision regardless of your AI command bar mode.');
+    document.getElementById('aiSettings').hidden = false;
+    return;
+  }
+  if (!justtcgApiKey.value) {
+    setStatus('Card price lookup also needs your own JustTCG API key (⚙ settings).');
+    document.getElementById('aiSettings').hidden = false;
+    return;
+  }
+
+  const resultBox = document.getElementById('cardPriceResult');
+  try {
+    setProgress(0.1, 'Identifying card at playhead...');
+    const result = await lookupCardPriceAtTime(state, {
+      geminiApiKey: geminiApiKey.value,
+      justtcgApiKey: justtcgApiKey.value,
+      at: state.playhead,
+    }, { onProgress: (msg) => setProgress(0.5, msg) });
+    setProgress(null);
+
+    const { card, listing, priceUsd, priceAud, audError } = result;
+    const priceLabel = priceAud != null
+      ? `$${priceAud.toFixed(2)} AUD`
+      : `$${priceUsd.toFixed(2)} USD (AUD conversion failed: ${audError})`;
+    const overlayText = `${listing.name}${listing.number ? ` #${listing.number}` : ''} — ${priceAud != null ? `$${priceAud.toFixed(2)} AUD` : `$${priceUsd.toFixed(2)} USD`}`;
+    state.addTextOverlay({ text: overlayText, start: state.playhead, end: state.playhead + 4, y: 92, fontSize: 36 });
+
+    resultBox.innerHTML = '';
+    const item = document.createElement('div');
+    item.className = 'content-analysis-item';
+    item.textContent = `${listing.name}${listing.set ? ` (${listing.set})` : ''}${listing.condition ? `, ${listing.condition}` : ''} — ${priceLabel}`;
+    resultBox.appendChild(item);
+    if (card.confidence !== 'high') {
+      const note = document.createElement('div');
+      note.className = 'panel-hint';
+      note.textContent = `Identification confidence: ${card.confidence}. ${card.notes || ''}`;
+      resultBox.appendChild(note);
+    }
+
+    setStatus(`Added price overlay: ${overlayText}`);
+  } catch (err) {
+    setProgress(null);
+    setStatus(`Card price lookup failed: ${err.message}`);
+    console.error(err);
+  }
+});
+
 // --- AI command bar --------------------------------------------------------
 const aiInput = document.getElementById('aiInput');
 const claudeApiKey = document.getElementById('claudeApiKey');
 const geminiApiKey = document.getElementById('geminiApiKey');
+const justtcgApiKey = document.getElementById('justtcgApiKey');
+justtcgApiKey.value = localStorage.getItem('novacut_justtcg_key') || '';
+justtcgApiKey.addEventListener('change', () => localStorage.setItem('novacut_justtcg_key', justtcgApiKey.value));
 const aiModeRadios = Array.from(document.querySelectorAll('input[name="aiMode"]'));
 const localLlmTierGroup = document.getElementById('localLlmTierGroup');
 
