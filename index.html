@@ -93,8 +93,10 @@
         <hr class="panel-divider" />
         <p class="panel-hint">
           <strong>Card price lookup</strong> — identifies the trading card at the
-          playhead (Gemini vision) and adds a text overlay with its JustTCG price
-          in AUD. Needs a Gemini API key and a JustTCG key (⚙ settings).
+          playhead (Gemini vision) and adds a text overlay with its market price
+          (from <a href="https://tcgdex.dev" target="_blank" rel="noopener">TCGdex</a>,
+          a free, open-source, no-API-key-needed Pokémon TCG database) converted to
+          AUD. Needs a Gemini API key (⚙ settings) for the vision step.
         </p>
         <button id="cardPriceBtn" class="btn btn-secondary btn-block">💰 Add Card Price at Playhead</button>
         <div id="cardPriceResult" class="content-analysis"></div>
@@ -138,11 +140,11 @@
     model, Claude Vision, or Gemini's vision model.</p>
 
     <hr class="panel-divider" />
-    <p class="panel-hint"><strong>Card price lookup (optional)</strong> — "💰 Add Card Price at Playhead" (Auto-Cut
+    <p class="panel-hint"><strong>Card price lookup</strong> — "💰 Add Card Price at Playhead" (Auto-Cut
     tab) has Gemini identify the card visible at the playhead, looks it up on
-    <a href="https://justtcg.com" target="_blank" rel="noopener">JustTCG</a>, and converts the price to AUD.
-    Needs a Gemini API key above (regardless of which AI mode you're using for commands) plus your own JustTCG key.</p>
-    <input id="justtcgApiKey" type="password" placeholder="JustTCG API key (stored only in this browser)" />
+    <a href="https://tcgdex.dev" target="_blank" rel="noopener">TCGdex</a> (free, open-source, no key needed),
+    and converts the price to AUD. Needs a Gemini API key above (regardless of which AI mode you're using for
+    commands) for the vision step only.</p>
 
     <hr class="panel-divider" />
     <p class="panel-hint"><strong>Freesound (optional)</strong> — powers "Search Freesound" in the Audio tab with

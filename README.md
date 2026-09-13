@@ -91,10 +91,11 @@ your own Claude API key.
 - **Card price lookup** (Auto-Cut tab, "💰 Add Card Price at Playhead"): for
   anyone filming trading-card content — points Gemini's vision model at the
   frame under the playhead to identify the card, looks up its market price on
-  [JustTCG](https://justtcg.com) (needs your own JustTCG API key), converts
-  USD → AUD, and drops the result on the timeline as a text overlay. Needs a
-  Gemini API key (⚙ settings) regardless of which AI mode you use for the
-  command bar, plus your own JustTCG key.
+  [TCGdex](https://tcgdex.dev) (free, open-source, community-run Pokémon TCG
+  database — no API key or auth of any kind), converts the result (USD from
+  TCGplayer, or EUR from Cardmarket if that's what's available) to AUD, and
+  drops it on the timeline as a text overlay. Needs a Gemini API key
+  (⚙ settings) for the vision step only — nothing else to sign up for.
 - **Export**: renders the full timeline (trims, speed, zoom keyframes, text
   overlays, sound effects) to a downloadable H.264/AAC MP4, entirely
   client-side via ffmpeg.wasm.
@@ -140,7 +141,7 @@ js/visionAnalysis.js     Claude Vision: frame sampling + content-timeline recogn
 js/localVision.js        TensorFlow.js/COCO-SSD: free local object recognition, no key needed
 js/soundEffects.js       Procedural SFX synthesis (Web Audio), custom upload resolution, live preview scheduling, WAV encoding for export
 js/freesound.js          Freesound API text search (real recorded sound effects, bring-your-own key)
-js/cardPricing.js        Gemini vision card ID -> JustTCG price lookup -> USD/AUD conversion
+js/cardPricing.js        Gemini vision card ID -> TCGdex price lookup (no key needed) -> AUD conversion
 js/exportPipeline.js    Builds the ffmpeg filter graph and renders the final MP4
 js/app.js               Wires everything to the DOM
 vendor/                Vendored ffmpeg.wasm packages (MIT) — see vendor/NOTICE.md
@@ -185,11 +186,14 @@ assets/fonts/           Roboto (Apache-2.0), used by drawtext on export
   transitions or multi-track video compositing yet — single video track with
   overlay text/zoom/sfx is what's implemented.
 - Card price lookup depends entirely on Gemini's vision identification being
-  correct and JustTCG actually listing the exact card/printing — it surfaces
-  Gemini's confidence and notes when identification isn't "high" confidence,
-  but doesn't verify the match against anything else.
+  correct and TCGdex actually listing a priced variant of that exact
+  card/printing — it surfaces Gemini's confidence and notes when
+  identification isn't "high" confidence, but doesn't verify the match
+  against anything else. TCGdex's own pricing coverage varies by card (older
+  or lower-demand cards may have no TCGplayer/Cardmarket price at all), in
+  which case the lookup reports no priced listing rather than guessing.
 - Freesound search sends your API key as a URL query parameter (same
-  bring-your-own-key tradeoff as the Claude/Gemini/JustTCG keys above) and
+  bring-your-own-key tradeoff as the Claude/Gemini keys above) and
   fetches preview audio directly from Freesound's CDN in-browser, which
   requires that CDN to serve permissive CORS headers; this was verified with
   mocked network responses (this sandbox can't reach freesound.org directly

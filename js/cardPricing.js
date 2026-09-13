@@ -4,14 +4,15 @@ import { callGemini } from './geminiClient.js';
 // "Identify the trading card on screen, look up what it's worth, show the
 // price" — a small pipeline chaining three independent services:
 //   1. Gemini vision: what card is this?
-//   2. JustTCG (https://justtcg.com): what does that card sell for (USD)?
-//   3. Frankfurter (ECB rates, no key needed): USD -> AUD.
+//   2. TCGdex (https://tcgdex.dev): what does that card sell for? Fully
+//      open-source, community-run, no API key/auth required at all.
+//   3. Frankfurter (ECB rates, no key needed): source currency -> AUD.
 // Each step can fail independently (no confident ID, no market match, rate
 // service down) — lookupCardPriceAtTime() reports exactly which step got
-// how far rather than an opaque single failure, and still returns a USD
-// price if only the currency conversion step fails.
+// how far rather than an opaque single failure, and still returns the
+// original-currency price if only the currency conversion step fails.
 
-const JUSTTCG_BASE = 'https://api.justtcg.com/v1';
+const TCGDEX_BASE = 'https://api.tcgdex.net/v2';
 const FRAME_W = 512;
 const FRAME_H = 512;
 
@@ -69,79 +70,135 @@ export async function identifyCardWithGemini(state, apiKey, globalTime) {
   return result;
 }
 
-// Picks a representative price from a JustTCG card's variants: prefers
-// Near Mint / unlisted condition (the typical "market price" a casual user
-// means), falling back to whichever variant actually has a price.
-function pickVariant(card) {
-  const priced = (card.variants || []).filter((v) => typeof v.price === 'number');
-  if (priced.length === 0) return null;
-  const nearMint = priced.find((v) => /near mint|^nm$/i.test(v.condition || ''));
-  return nearMint || priced.sort((a, b) => b.price - a.price)[0];
-}
-
-export async function searchJustTCG(apiKey, { name, game = 'Pokemon', number } = {}) {
-  const params = new URLSearchParams({ q: name, game, limit: '10' });
-  if (number) params.set('number', number);
-  const res = await fetch(`${JUSTTCG_BASE}/cards?${params.toString()}`, {
-    headers: { 'x-api-key': apiKey },
-  });
-  const body = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new Error(`JustTCG API error ${res.status}: ${body?.error || res.statusText}`);
+async function tcgdexFetch(path) {
+  let res;
+  try {
+    res = await fetch(`${TCGDEX_BASE}${path}`);
+  } catch (err) {
+    throw new Error(`Could not reach TCGdex (network error): ${err.message}`);
   }
-  if (body?.error) throw new Error(`JustTCG: ${body.error}`);
-  const cards = body?.data || [];
-  if (cards.length === 0) return null;
-
-  // If a set/number was identified, prefer an exact-ish match; otherwise
-  // just take the best-priced first result (JustTCG's default ordering).
-  const card = cards[0];
-  const variant = pickVariant(card);
-  if (!variant) return null;
-  return {
-    name: card.name,
-    set: card.set_name || card.set,
-    number: card.number,
-    condition: variant.condition,
-    printing: variant.printing,
-    priceUsd: variant.price,
-  };
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`TCGdex API error ${res.status}: ${res.statusText}`);
+  return res.json();
 }
 
-let cachedRate = null; // { rate, fetchedAt } — USD->AUD barely moves minute to minute
+// Collector numbers come back as things like "199/197" from Gemini and as
+// bare (sometimes zero-padded) strings like "007" from TCGdex — compare
+// just the leading digits, un-padded, so either shape matches the other.
+function normalizeNumber(n) {
+  if (!n) return null;
+  const m = String(n).match(/\d+/);
+  return m ? String(parseInt(m[0], 10)) : null;
+}
+
+// Picks a representative market price straight off a TCGdex card's
+// `pricing` field: prefers TCGplayer (USD), trying the variant that best
+// matches how the card was identified (holo/reverse/normal), then falls
+// back to Cardmarket's average (EUR) if TCGplayer has nothing.
+function pickPrice(card, printingHint) {
+  const pricing = card.pricing;
+  if (!pricing) return null;
+
+  const tp = pricing.tcgplayer;
+  if (tp) {
+    const hint = (printingHint || '').toLowerCase();
+    const order = hint.includes('reverse')
+      ? ['reverseHolofoil', 'reverse', 'holofoil', 'normal', '1stEditionHolofoil', '1stEdition']
+      : hint.includes('1st') || hint.includes('edition')
+        ? ['1stEditionHolofoil', '1stEdition', 'holofoil', 'normal', 'reverseHolofoil', 'reverse']
+        : hint.includes('holo')
+          ? ['holofoil', 'reverseHolofoil', 'normal', 'reverse', '1stEditionHolofoil', '1stEdition']
+          : ['normal', 'holofoil', 'reverseHolofoil', 'reverse', '1stEditionHolofoil', '1stEdition'];
+    for (const variantKey of order) {
+      const v = tp[variantKey];
+      const amount = v?.marketPrice ?? v?.midPrice ?? v?.lowPrice;
+      if (typeof amount === 'number') {
+        return { amount, currency: tp.unit || 'USD', source: 'TCGplayer' };
+      }
+    }
+  }
+
+  const cm = pricing.cardmarket;
+  if (cm) {
+    const wantsHolo = /holo|reverse|1st|edition/i.test(printingHint || '');
+    const amount = wantsHolo
+      ? (cm['avg-holo'] ?? cm.avg ?? cm['trend-holo'] ?? cm.trend)
+      : (cm.avg ?? cm.trend ?? cm['avg-holo'] ?? cm['trend-holo']);
+    if (typeof amount === 'number') {
+      return { amount, currency: cm.unit || 'EUR', source: 'Cardmarket' };
+    }
+  }
+  return null;
+}
+
+// Searches TCGdex by name, then narrows to the identified collector number
+// when we have one, then fetches full card details (pricing only lives on
+// the single-card endpoint, not the search results) for a handful of
+// candidates until one actually resolves to a price.
+export async function searchTCGdex({ name, number, printing } = {}) {
+  const candidates = await tcgdexFetch(`/en/cards?name=${encodeURIComponent(name)}`);
+  if (!candidates || candidates.length === 0) return null;
+
+  let shortlist = candidates;
+  const wantedNumber = normalizeNumber(number);
+  if (wantedNumber) {
+    const byNumber = candidates.filter((c) => normalizeNumber(c.localId) === wantedNumber);
+    if (byNumber.length > 0) shortlist = byNumber;
+  }
+
+  for (const candidate of shortlist.slice(0, 5)) {
+    const full = await tcgdexFetch(`/en/cards/${candidate.id}`);
+    if (!full) continue;
+    const price = pickPrice(full, printing);
+    if (price) {
+      return {
+        name: full.name,
+        set: full.set?.name || null,
+        number: full.localId,
+        ...price, // { amount, currency, source }
+      };
+    }
+  }
+  return null;
+}
+
+const rateCache = new Map(); // currency -> { rate, fetchedAt } — rates barely move minute to minute
 const RATE_CACHE_MS = 5 * 60 * 1000;
 
-export async function convertUsdToAud(usd) {
-  if (cachedRate && Date.now() - cachedRate.fetchedAt < RATE_CACHE_MS) {
-    return { aud: usd * cachedRate.rate, rate: cachedRate.rate };
+export async function convertToAud(amount, fromCurrency) {
+  if (fromCurrency === 'AUD') return { aud: amount, rate: 1 };
+  const cached = rateCache.get(fromCurrency);
+  if (cached && Date.now() - cached.fetchedAt < RATE_CACHE_MS) {
+    return { aud: amount * cached.rate, rate: cached.rate };
   }
-  const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=AUD');
+  const res = await fetch(`https://api.frankfurter.app/latest?from=${fromCurrency}&to=AUD`);
   if (!res.ok) throw new Error(`Currency conversion API error ${res.status}`);
   const data = await res.json();
   const rate = data?.rates?.AUD;
-  if (typeof rate !== 'number') throw new Error('Currency conversion API returned no AUD rate');
-  cachedRate = { rate, fetchedAt: Date.now() };
-  return { aud: usd * rate, rate };
+  if (typeof rate !== 'number') throw new Error(`Currency conversion API returned no AUD rate for ${fromCurrency}`);
+  rateCache.set(fromCurrency, { rate, fetchedAt: Date.now() });
+  return { aud: amount * rate, rate };
 }
 
 // The full pipeline. Never throws for a partial success — e.g. if
-// identification and the JustTCG lookup both succeed but the currency
-// conversion fails, it still returns the USD price with `audError` set,
-// rather than discarding a result the first two (harder) steps produced.
-export async function lookupCardPriceAtTime(state, { geminiApiKey, justtcgApiKey, at }, { onProgress } = {}) {
+// identification and the TCGdex lookup both succeed but the currency
+// conversion fails, it still returns the original-currency price with
+// `audError` set, rather than discarding a result the first two (harder)
+// steps produced.
+export async function lookupCardPriceAtTime(state, { geminiApiKey, at }, { onProgress } = {}) {
   onProgress && onProgress('Looking at the frame...');
   const card = await identifyCardWithGemini(state, geminiApiKey, at);
 
-  onProgress && onProgress(`Identified "${card.name}" — checking JustTCG...`);
-  const listing = await searchJustTCG(justtcgApiKey, { name: card.name, number: card.number || undefined });
+  onProgress && onProgress(`Identified "${card.name}" — checking TCGdex...`);
+  const listing = await searchTCGdex({ name: card.name, number: card.number || undefined, printing: card.printing });
   if (!listing) {
-    throw new Error(`Identified "${card.name}"${card.set ? ` (${card.set})` : ''}, but JustTCG has no priced listing for it.`);
+    throw new Error(`Identified "${card.name}"${card.set ? ` (${card.set})` : ''}, but TCGdex has no priced listing for it.`);
   }
 
-  const result = { card, listing, priceUsd: listing.priceUsd };
-  onProgress && onProgress('Converting to AUD...');
+  const result = { card, listing };
+  onProgress && onProgress(`Converting ${listing.currency} to AUD...`);
   try {
-    const { aud, rate } = await convertUsdToAud(listing.priceUsd);
+    const { aud, rate } = await convertToAud(listing.amount, listing.currency);
     result.priceAud = aud;
     result.rate = rate;
   } catch (err) {
