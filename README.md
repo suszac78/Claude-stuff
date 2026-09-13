@@ -33,14 +33,17 @@ your own Claude API key.
     `speed up clip 1 by 2x`.
   - **Free Local AI**: free, no account, *real* natural-language
     understanding — phrase things however you like. Runs a small
-    instruction-tuned language model
-    ([Llama-3.2-1B-Instruct](https://huggingface.co/mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC))
-    entirely in your browser via WebGPU ([WebLLM](https://github.com/mlc-ai/web-llm)),
-    no server, no API key. Needs a WebGPU-capable browser (Chrome/Edge; not
-    Safari/Firefox by default) and a one-time ~880MB model download (cached
-    by the browser after that — see `vendor/webllm/NOTICE.md`). Being a
-    1B-parameter model, it's noticeably weaker than Claude at complex,
-    multi-clause instructions.
+    instruction-tuned language model entirely in your browser via WebGPU
+    ([WebLLM](https://github.com/mlc-ai/web-llm)), no server, no API key.
+    Needs a WebGPU-capable browser (Chrome/Edge; not Safari/Firefox by
+    default). Two quality tiers, picked in the same panel (model weights
+    are cached by the browser after the first download — see
+    `vendor/webllm/NOTICE.md`):
+    - *Fast* — [Llama-3.2-1B-Instruct](https://huggingface.co/mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC), ~880MB.
+    - *Smarter* (default) — [Phi-3.5-mini-instruct](https://huggingface.co/mlc-ai/Phi-3.5-mini-instruct-q4f16_1-MLC), ~3.8B params, ~3.7GB, meaningfully better instruction-following, slower per response.
+
+    No model that fits in a browser tab matches a frontier model like
+    Claude — this narrows that gap, not closes it.
   - **Claude API**: best quality, phrase requests however you like, at the
     cost of API usage on your own key — paste it in the same panel; it's
     stored only in `localStorage` and sent only to `api.anthropic.com`.
@@ -147,7 +150,10 @@ assets/fonts/           Roboto (Apache-2.0), used by drawtext on export
   Claude Vision can. It's a real, useful, zero-cost floor, not a full
   replacement for Claude Vision on content-specific instructions.
 - Likewise, "Free Local AI" command parsing (WebLLM) is a real language
-  model, not pattern matching, but it's a 1B-parameter model running in a
-  browser tab — it will misparse or drop parts of long, multi-clause,
-  ambiguous instructions in a way Claude usually won't. It also requires
-  WebGPU (Chrome/Edge) and an ~880MB one-time download.
+  model, not pattern matching, but even the larger "Smarter" tier (3.8B) is
+  tiny next to Claude — it will misparse, drop, or refuse to resolve parts
+  of long, multi-clause, ambiguous instructions in a way Claude usually
+  won't, especially ones that depend on content it has no way to see
+  concrete numbers for (durations, "the last N seconds", etc.). It also
+  requires WebGPU (Chrome/Edge) and a one-time download (880MB–3.7GB
+  depending on tier).
