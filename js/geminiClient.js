@@ -1,4 +1,4 @@
-import { AI_ACTION_SYSTEM_PROMPT, extractActionsFromText } from './aiCommands.js';
+import { AI_ACTION_SYSTEM_PROMPT, extractActionsFromText, extractTopLevelObjects } from './aiCommands.js';
 import { sampleFrames, visionIntroText, visionAskText, filterSegments } from './visionAnalysis.js';
 
 // Bring-your-own-key bridge to Google's Gemini API — an alternative to
@@ -45,7 +45,11 @@ export async function parseCommandWithGemini(text, apiKey, projectSummary) {
   const raw = await callGemini(apiKey, {
     systemInstruction: AI_ACTION_SYSTEM_PROMPT,
     parts: [{ text: `Project state:\n${projectSummary}\n\nInstruction: ${text}` }],
-    maxOutputTokens: 1024,
+    // Generous headroom: a content-aware, multi-action response can run
+    // long, and on models with built-in reasoning, internal "thinking"
+    // tokens are drawn from this same budget before the visible JSON even
+    // starts — too tight a cap here truncates the answer mid-object.
+    maxOutputTokens: 4096,
   });
   return extractActionsFromText(raw);
 }
@@ -62,8 +66,17 @@ export async function analyzeClipContentWithGemini(clip, apiKey, { onProgress } 
   }
   parts.push({ text: visionAskText(localDur) });
 
-  const raw = await callGemini(apiKey, { parts, maxOutputTokens: 1536 });
-  const jsonMatch = raw.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('Could not find a JSON timeline in the response');
-  return filterSegments(JSON.parse(jsonMatch[0]));
+  const raw = await callGemini(apiKey, { parts, maxOutputTokens: 3072 });
+  const arrayStart = raw.indexOf('[');
+  if (arrayStart === -1) throw new Error('Could not find a JSON timeline in the response');
+  // Same salvage approach as extractActionsFromText: keep whatever complete
+  // {start,end,description} segments came through even if the response got
+  // cut off before the array closed.
+  const segments = extractTopLevelObjects(raw.slice(arrayStart))
+    .map((objText) => {
+      try { return JSON.parse(objText); } catch { return null; }
+    })
+    .filter(Boolean);
+  if (segments.length === 0) throw new Error('Could not find a JSON timeline in the response');
+  return filterSegments(segments);
 }

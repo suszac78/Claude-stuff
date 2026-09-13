@@ -299,9 +299,23 @@ geminiApiKey.addEventListener('change', () => {
 });
 geminiApiKey.addEventListener('input', updateAiModeUI);
 
-document.getElementById('aiSettingsToggle').addEventListener('click', () => {
-  const panel = document.getElementById('aiSettings');
-  panel.hidden = !panel.hidden;
+const aiSettingsPanel = document.getElementById('aiSettings');
+const aiCommandArea = document.querySelector('.ai-command-area');
+document.getElementById('aiSettingsToggle').addEventListener('click', (e) => {
+  e.stopPropagation();
+  aiSettingsPanel.hidden = !aiSettingsPanel.hidden;
+});
+// The panel floats above the rest of the page (so it can never squeeze the
+// video preview, however tall it gets), which means it also has to close
+// itself on an outside click like any other dropdown/popover — otherwise
+// it just sits there covering whatever's underneath until you find the
+// gear icon again. Scoped to the whole command-bar area rather than just
+// the panel itself, so typing a command or hitting Run right after
+// tweaking a setting doesn't slam it shut first.
+document.addEventListener('click', (e) => {
+  if (!aiSettingsPanel.hidden && !aiCommandArea.contains(e.target)) {
+    aiSettingsPanel.hidden = true;
+  }
 });
 
 async function runAiCommand() {

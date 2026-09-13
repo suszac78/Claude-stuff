@@ -1,5 +1,6 @@
 import { clamp } from './utils.js';
 import { seekTo } from './autoCut.js';
+import { extractTopLevelObjects } from './aiCommands.js';
 
 const CLAUDE_MODEL = 'claude-sonnet-5';
 const FRAME_W = 384;
@@ -79,7 +80,7 @@ export async function analyzeClipContent(clip, apiKey, { onProgress } = {}) {
     },
     body: JSON.stringify({
       model: CLAUDE_MODEL,
-      max_tokens: 1536,
+      max_tokens: 3072,
       messages: [{ role: 'user', content }],
     }),
   });
@@ -90,7 +91,13 @@ export async function analyzeClipContent(clip, apiKey, { onProgress } = {}) {
   const data = await res.json();
   const textBlock = (data.content || []).find((b) => b.type === 'text');
   if (!textBlock) throw new Error('No text response from Claude');
-  const jsonMatch = textBlock.text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('Could not find a JSON timeline in the response');
-  return filterSegments(JSON.parse(jsonMatch[0]));
+  const arrayStart = textBlock.text.indexOf('[');
+  if (arrayStart === -1) throw new Error('Could not find a JSON timeline in the response');
+  const segments = extractTopLevelObjects(textBlock.text.slice(arrayStart))
+    .map((objText) => {
+      try { return JSON.parse(objText); } catch { return null; }
+    })
+    .filter(Boolean);
+  if (segments.length === 0) throw new Error('Could not find a JSON timeline in the response');
+  return filterSegments(segments);
 }

@@ -150,20 +150,64 @@ const KNOWN_ACTION_TYPES = new Set([
   'addZoom', 'removeSilence', 'detectScenes',
 ]);
 
+// Scans for top-level {...} objects inside a possibly-truncated JSON array
+// (e.g. a response cut off by a token limit mid-way through the last
+// action), tracking string/escape state so braces inside string values
+// don't confuse the brace-depth count. Any object whose closing brace never
+// arrives is simply never captured — exactly the "keep what's complete,
+// drop what isn't" behavior we want, instead of one broken tail action
+// invalidating every action that came before it.
+export function extractTopLevelObjects(text) {
+  const objects = [];
+  let depth = 0;
+  let objStart = -1;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        objects.push(text.slice(objStart, i + 1));
+        objStart = -1;
+      }
+    }
+  }
+  return objects;
+}
+
 // Shared by every "brain" that can drive the editor (Claude, Gemini, the
 // local LLM): pulls a JSON action list out of a raw model response, tolerant
-// of chatty prose around it and of a smaller model emitting a single bare
+// of chatty prose around it, of a smaller model emitting a single bare
 // action object (e.g. `{"type":"split","at":0}`) instead of the requested
-// `[{"type":"split","at":0}]`.
+// `[{"type":"split","at":0}]`, and of a response that got cut off partway
+// through the last action (a real failure mode against Gemini: a longer,
+// content-aware action list can exceed the output token budget and truncate
+// mid-object).
 export function extractActionsFromText(raw) {
-  const arrayMatch = raw.match(/\[[\s\S]*\]/);
-  if (arrayMatch) {
-    try {
-      const parsed = JSON.parse(arrayMatch[0]);
-      if (Array.isArray(parsed)) return parsed.filter((a) => a && KNOWN_ACTION_TYPES.has(a.type));
-    } catch {
-      // fall through to the single-object attempt below
+  const arrayStart = raw.indexOf('[');
+  if (arrayStart !== -1) {
+    const objectTexts = extractTopLevelObjects(raw.slice(arrayStart));
+    const actions = [];
+    for (const objText of objectTexts) {
+      try {
+        const parsed = JSON.parse(objText);
+        if (parsed && KNOWN_ACTION_TYPES.has(parsed.type)) actions.push(parsed);
+      } catch {
+        // one malformed object shouldn't sink the ones parsed successfully
+      }
     }
+    if (actions.length > 0) return actions;
   }
   const objectMatch = raw.match(/\{[\s\S]*\}/);
   if (objectMatch) {
@@ -188,7 +232,7 @@ export async function parseCommandWithClaude(text, apiKey, projectSummary) {
     },
     body: JSON.stringify({
       model: 'claude-sonnet-5',
-      max_tokens: 1024,
+      max_tokens: 2048,
       system: AI_ACTION_SYSTEM_PROMPT,
       messages: [
         { role: 'user', content: `Project state:\n${projectSummary}\n\nInstruction: ${text}` },

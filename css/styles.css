@@ -12,6 +12,16 @@
 }
 
 * { box-sizing: border-box; }
+/* Without this, any class below that sets its own unconditional `display`
+   (flex/grid/etc.) silently wins over the browser's default `[hidden]`
+   handling at equal specificity — the element keeps rendering (and
+   intercepting clicks) even after JS sets `.hidden = true`, since that
+   property only toggles the HTML attribute, not visibility on its own.
+   Confirmed live: `.ai-settings` and `.ai-tier-group` both had exactly
+   this bug (display:flex unconditionally beat [hidden]) until this rule
+   was added. !important guarantees hidden always wins regardless of any
+   future class's specificity. */
+[hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg);
@@ -174,17 +184,22 @@ label > span { margin-left: 6px; }
 .ai-bar input { flex: 1; padding: 10px 12px; font-size: 13px; }
 /* Floats above the command bar instead of pushing the layout around — the
    settings list keeps growing (modes, tiers, key fields) and must never be
-   able to squeeze the video preview above it. */
+   able to squeeze the video preview above it. Deliberately anchored to the
+   left and width-capped, like a normal dropdown off the gear icon, rather
+   than spanning the full width: full-width made it grow tall enough on
+   ordinary window sizes to cover the right sidebar's tab bar above it
+   (Text/Zoom/Auto-Cut), blocking clicks there until the panel was closed. */
 .ai-settings {
   position: absolute;
   bottom: 100%;
   left: 0;
-  right: 0;
-  max-height: 65vh;
+  width: min(640px, 100%);
+  max-height: 60vh;
   overflow-y: auto;
   padding: 10px 16px;
   background: var(--bg-3);
   border-top: 1px solid var(--border);
+  border-right: 1px solid var(--border);
   box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
