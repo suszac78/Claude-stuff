@@ -12,6 +12,7 @@ import { parseCommandWithLocalLLM, MODEL_TIERS } from './localLLM.js';
 import { parseCommandWithGemini, analyzeClipContentWithGemini } from './geminiClient.js';
 import { lookupCardPriceAtTime } from './cardPricing.js';
 import { BUILTIN_EFFECTS, SoundEffectPlayer } from './soundEffects.js';
+import { searchFreesound, isCC0 } from './freesound.js';
 import { exportProject, downloadBlob } from './exportPipeline.js';
 import { formatTime } from './utils.js';
 
@@ -238,14 +239,16 @@ document.getElementById('recognizeContentBtn').addEventListener('click', async (
   }
 });
 
-document.getElementById('cardPriceBtn').addEventListener('click', async () => {
+document.getElementById('cardPriceBtn').addEventListener('click', async (e) => {
   if (state.clips.length === 0) return setStatus('Import a clip first.');
   if (!geminiApiKey.value) {
+    e.stopPropagation();
     setStatus('Card price lookup needs a Gemini API key (⚙ settings) — it identifies the card via Gemini vision regardless of your AI command bar mode.');
     document.getElementById('aiSettings').hidden = false;
     return;
   }
   if (!justtcgApiKey.value) {
+    e.stopPropagation();
     setStatus('Card price lookup also needs your own JustTCG API key (⚙ settings).');
     document.getElementById('aiSettings').hidden = false;
     return;
@@ -339,6 +342,81 @@ document.getElementById('sfxUploadInput').addEventListener('change', async (e) =
   e.target.value = '';
 });
 
+async function runFreesoundSearch(e) {
+  const query = document.getElementById('freesoundQuery').value;
+  const resultsBox = document.getElementById('freesoundResults');
+  if (!freesoundApiKey.value) {
+    if (e) e.stopPropagation();
+    setStatus('Sound search needs your own Freesound API key (⚙ settings).');
+    document.getElementById('aiSettings').hidden = false;
+    return;
+  }
+  resultsBox.innerHTML = '';
+  setStatus(`Searching Freesound for "${query}"...`);
+  try {
+    const results = await searchFreesound(freesoundApiKey.value, query);
+    renderFreesoundResults(results);
+    setStatus(
+      results.length
+        ? `Found ${results.length} sound(s) for "${query}".`
+        : `No Freesound results for "${query}".`
+    );
+  } catch (err) {
+    setStatus(`Freesound search failed: ${err.message}`);
+    console.error(err);
+  }
+}
+
+function renderFreesoundResults(results) {
+  const container = document.getElementById('freesoundResults');
+  container.innerHTML = '';
+  for (const r of results) {
+    const item = document.createElement('div');
+    item.className = 'sfx-item';
+
+    const label = document.createElement('span');
+    label.className = 'sfx-item-label';
+    label.textContent = `${r.name} (${r.duration.toFixed(1)}s)${isCC0(r.license) ? '' : ` — by ${r.username}`}`;
+    label.title = `${r.name} — ${r.license || 'unknown license'} — uploaded by ${r.username}`;
+    item.appendChild(label);
+
+    const playBtn = document.createElement('button');
+    playBtn.className = 'btn btn-icon';
+    playBtn.textContent = '▶';
+    playBtn.title = 'Preview';
+    playBtn.addEventListener('click', () => {
+      new Audio(r.previewUrl).play().catch((err) => setStatus(`Preview playback failed: ${err.message}`));
+    });
+    item.appendChild(playBtn);
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn btn-secondary';
+    addBtn.textContent = '+ Add';
+    addBtn.addEventListener('click', () => {
+      const sfx = state.addSoundEffect({
+        kind: 'freesound',
+        url: r.previewUrl,
+        name: r.name,
+        duration: r.duration,
+        start: state.playhead,
+        license: r.license,
+        attribution: r.username,
+      });
+      state.selection = { type: 'sfx', id: sfx.id };
+      rerenderAll();
+      setStatus(`Added "${r.name}" at ${formatTime(state.playhead, false)}.`);
+    });
+    item.appendChild(addBtn);
+
+    container.appendChild(item);
+  }
+}
+
+document.getElementById('freesoundSearchBtn').addEventListener('click', runFreesoundSearch);
+document.getElementById('freesoundQuery').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') runFreesoundSearch();
+});
+
 function renderSfxPanel() {
   const container = document.getElementById('sfxPanel');
   if (!container) return;
@@ -354,6 +432,9 @@ function renderSfxPanel() {
     label.className = 'sfx-item-label';
     const name = sfx.kind === 'builtin' ? (BUILTIN_EFFECTS.find((e) => e.id === sfx.effect)?.label || sfx.effect) : sfx.name;
     label.textContent = `${name} @ ${formatTime(sfx.start, false)}`;
+    if (sfx.kind === 'freesound') {
+      label.title = `${sfx.name} — ${sfx.license || 'unknown license'} — by ${sfx.attribution}`;
+    }
     item.appendChild(label);
 
     const startInput = document.createElement('input');
@@ -416,6 +497,9 @@ const geminiApiKey = document.getElementById('geminiApiKey');
 const justtcgApiKey = document.getElementById('justtcgApiKey');
 justtcgApiKey.value = localStorage.getItem('novacut_justtcg_key') || '';
 justtcgApiKey.addEventListener('change', () => localStorage.setItem('novacut_justtcg_key', justtcgApiKey.value));
+const freesoundApiKey = document.getElementById('freesoundApiKey');
+freesoundApiKey.value = localStorage.getItem('novacut_freesound_key') || '';
+freesoundApiKey.addEventListener('change', () => localStorage.setItem('novacut_freesound_key', freesoundApiKey.value));
 const aiModeRadios = Array.from(document.querySelectorAll('input[name="aiMode"]'));
 const localLlmTierGroup = document.getElementById('localLlmTierGroup');
 

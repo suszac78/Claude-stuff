@@ -57,13 +57,15 @@ function makeZoomKeyframe(partial) {
 function makeSoundEffect(partial) {
   return {
     id: uid('sfx'),
-    kind: 'builtin', // 'builtin' | 'custom'
+    kind: 'builtin', // 'builtin' | 'custom' | 'freesound'
     effect: null, // builtin effect id (see soundEffects.js BUILTIN_EFFECTS)
-    url: null, // custom: blob URL of the uploaded audio
+    url: null, // custom/freesound: blob URL of the upload, or a Freesound preview URL
     name: '',
     start: 0, // global timeline seconds
     duration: 0.3,
     volume: 1,
+    license: null, // freesound: license string, e.g. "Creative Commons 0"
+    attribution: null, // freesound: uploader username, for license compliance
     ...partial,
   };
 }

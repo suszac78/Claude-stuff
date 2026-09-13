@@ -75,12 +75,19 @@ your own Claude API key.
     limited to a fixed class list — at the cost of API usage on your key.
 - **Sound effects** (Audio tab): six procedurally-synthesized builtin effects
   (beep, pop, whoosh, ding, drumroll, camera shutter) generated on-the-fly via
-  the Web Audio API — no audio assets shipped, zero licensing concerns — plus
-  support for uploading your own sound. Click a builtin (or upload a file) to
-  drop it at the playhead; drag its start time, adjust its volume, or delete
-  it from the Audio panel/timeline. Effects play live during preview and are
-  mixed into the exported audio track with ffmpeg (`adelay`/`amix`), so what
-  you hear while editing is what ships in the export.
+  the Web Audio API — no audio assets shipped, zero licensing concerns —
+  support for uploading your own sound, and a search against
+  [Freesound](https://freesound.org)'s library of real recorded effects (needs
+  your own Freesound API key, free at
+  [freesound.org/apiv2/apply](https://freesound.org/apiv2/apply/)). Click a
+  builtin, upload a file, or search-and-add a Freesound result to drop it at
+  the playhead; drag its start time, adjust its volume, or delete it from the
+  Audio panel/timeline. Effects play live during preview and are mixed into
+  the exported audio track with ffmpeg (`adelay`/`amix`), so what you hear
+  while editing is what ships in the export. Freesound results keep their
+  original license and uploader attribution (shown per result/placed effect)
+  — most are CC0, but some require attribution; that's on you to honor for
+  non-CC0 sounds.
 - **Card price lookup** (Auto-Cut tab, "💰 Add Card Price at Playhead"): for
   anyone filming trading-card content — points Gemini's vision model at the
   frame under the playhead to identify the card, looks up its market price on
@@ -132,6 +139,7 @@ js/localLLM.js           WebLLM: free local NL command parsing via a small in-br
 js/visionAnalysis.js     Claude Vision: frame sampling + content-timeline recognition (paid, needs a key)
 js/localVision.js        TensorFlow.js/COCO-SSD: free local object recognition, no key needed
 js/soundEffects.js       Procedural SFX synthesis (Web Audio), custom upload resolution, live preview scheduling, WAV encoding for export
+js/freesound.js          Freesound API text search (real recorded sound effects, bring-your-own key)
 js/cardPricing.js        Gemini vision card ID -> JustTCG price lookup -> USD/AUD conversion
 js/exportPipeline.js    Builds the ffmpeg filter graph and renders the final MP4
 js/app.js               Wires everything to the DOM
@@ -180,6 +188,14 @@ assets/fonts/           Roboto (Apache-2.0), used by drawtext on export
   correct and JustTCG actually listing the exact card/printing — it surfaces
   Gemini's confidence and notes when identification isn't "high" confidence,
   but doesn't verify the match against anything else.
+- Freesound search sends your API key as a URL query parameter (same
+  bring-your-own-key tradeoff as the Claude/Gemini/JustTCG keys above) and
+  fetches preview audio directly from Freesound's CDN in-browser, which
+  requires that CDN to serve permissive CORS headers; this was verified with
+  mocked network responses (this sandbox can't reach freesound.org directly
+  to confirm live CORS behavior), so if a real preview fetch ever fails with
+  a CORS error, downloading the sound and using "Upload Custom Sound"
+  instead is the fallback.
 - The free local recognition path (COCO-SSD) only knows 80 generic object
   classes — it can spot "person" or "cell phone" but has no concept of, say,
   a specific card trick, so it can't produce the same specific descriptions

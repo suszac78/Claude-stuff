@@ -313,6 +313,9 @@ label > span { margin-left: 6px; }
 }
 .sfx-item .sfx-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.sfx-search-row { display: flex; gap: 6px; margin-bottom: 10px; }
+.sfx-search-row input { flex: 1; }
+
 .playhead {
   position: absolute;
   top: 0;

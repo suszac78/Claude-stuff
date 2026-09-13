@@ -52,11 +52,23 @@
 
       <div class="side-tab-content" data-tab-content="audio" hidden>
         <p class="panel-hint">Sound effects are placed at the playhead on the global timeline. Click a builtin
-        effect below, or upload your own audio clip.</p>
+        effect below, upload your own audio clip, or search Freesound for a real recorded sound.</p>
         <div id="sfxBuiltinList" class="sfx-builtin-grid"></div>
         <hr class="panel-divider" />
         <label class="btn btn-secondary btn-block" for="sfxUploadInput">+ Upload Custom Sound at Playhead</label>
         <input id="sfxUploadInput" type="file" accept="audio/*" hidden />
+        <hr class="panel-divider" />
+        <p class="panel-hint">
+          <strong>Search Freesound</strong> — search real recorded sound effects and drop one at the playhead.
+          Needs your own <a href="https://freesound.org/apiv2/apply/" target="_blank" rel="noopener">Freesound
+          API key</a> (⚙ settings). Each result keeps its original license — check before using a
+          non-CC0 sound commercially.
+        </p>
+        <div class="sfx-search-row">
+          <input id="freesoundQuery" type="text" placeholder="e.g. applause, door creak, laser" />
+          <button id="freesoundSearchBtn" class="btn btn-secondary">Search</button>
+        </div>
+        <div id="freesoundResults" class="panel-body"></div>
         <hr class="panel-divider" />
         <div id="sfxPanel" class="panel-body"></div>
       </div>
@@ -131,6 +143,12 @@
     <a href="https://justtcg.com" target="_blank" rel="noopener">JustTCG</a>, and converts the price to AUD.
     Needs a Gemini API key above (regardless of which AI mode you're using for commands) plus your own JustTCG key.</p>
     <input id="justtcgApiKey" type="password" placeholder="JustTCG API key (stored only in this browser)" />
+
+    <hr class="panel-divider" />
+    <p class="panel-hint"><strong>Freesound (optional)</strong> — powers "Search Freesound" in the Audio tab with
+    real recorded sound effects from <a href="https://freesound.org" target="_blank" rel="noopener">freesound.org</a>'s
+    library. Get a free key at <a href="https://freesound.org/apiv2/apply/" target="_blank" rel="noopener">freesound.org/apiv2/apply</a>.</p>
+    <input id="freesoundApiKey" type="password" placeholder="Freesound API key (stored only in this browser)" />
   </div>
   </div>
 
