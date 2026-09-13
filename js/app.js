@@ -8,7 +8,7 @@ import { detectSilence, detectSceneChanges } from './autoCut.js';
 import { parseCommandOffline, parseCommandWithClaude, summarizeProject, executeActions } from './aiCommands.js';
 import { analyzeClipContent } from './visionAnalysis.js';
 import { analyzeClipContentLocal } from './localVision.js';
-import { parseCommandWithLocalLLM } from './localLLM.js';
+import { parseCommandWithLocalLLM, MODEL_TIERS } from './localLLM.js';
 import { exportProject, downloadBlob } from './exportPipeline.js';
 import { formatTime } from './utils.js';
 
@@ -224,9 +224,25 @@ document.getElementById('recognizeContentBtn').addEventListener('click', async (
 const aiInput = document.getElementById('aiInput');
 const claudeApiKey = document.getElementById('claudeApiKey');
 const aiModeRadios = Array.from(document.querySelectorAll('input[name="aiMode"]'));
+const localLlmTierGroup = document.getElementById('localLlmTierGroup');
 
 function getAiMode() {
   return (aiModeRadios.find((r) => r.checked) || {}).value || 'pattern';
+}
+
+// Build the fast/smart model-quality picker for the local-LLM mode from
+// MODEL_TIERS so the UI and the actual model list never drift apart.
+for (const [key, tier] of Object.entries(MODEL_TIERS)) {
+  const label = document.createElement('label');
+  label.className = 'ai-tier-option';
+  label.innerHTML = `<input type="radio" name="aiLlmTier" value="${key}" />
+    <span><strong>${tier.label}</strong><br/><span class="tier-note">${tier.note}</span></span>`;
+  localLlmTierGroup.appendChild(label);
+}
+const aiTierRadios = Array.from(document.querySelectorAll('input[name="aiLlmTier"]'));
+
+function getAiLlmTier() {
+  return (aiTierRadios.find((r) => r.checked) || {}).value || 'smart';
 }
 
 const savedMode = localStorage.getItem('novacut_ai_mode');
@@ -234,11 +250,15 @@ if (savedMode) {
   const radio = aiModeRadios.find((r) => r.value === savedMode);
   if (radio) radio.checked = true;
 }
+const savedTier = localStorage.getItem('novacut_ai_llm_tier') || 'smart';
+const tierRadio = aiTierRadios.find((r) => r.value === savedTier);
+if (tierRadio) tierRadio.checked = true;
 claudeApiKey.value = localStorage.getItem('novacut_claude_key') || '';
 
 function updateAiModeUI() {
   const mode = getAiMode();
   claudeApiKey.hidden = mode !== 'claude';
+  localLlmTierGroup.hidden = mode !== 'local-llm';
   const btn = document.getElementById('recognizeContentBtn');
   btn.textContent = mode === 'claude' && claudeApiKey.value
     ? '🔍 Recognize Video Content (Claude Vision)'
@@ -251,6 +271,9 @@ for (const radio of aiModeRadios) {
     localStorage.setItem('novacut_ai_mode', getAiMode());
     updateAiModeUI();
   });
+}
+for (const radio of aiTierRadios) {
+  radio.addEventListener('change', () => localStorage.setItem('novacut_ai_llm_tier', getAiLlmTier()));
 }
 claudeApiKey.addEventListener('change', () => {
   localStorage.setItem('novacut_claude_key', claudeApiKey.value);
@@ -302,6 +325,7 @@ async function runAiCommand() {
   if (mode === 'local-llm') {
     try {
       const actions = await parseCommandWithLocalLLM(text, summarizeProject(state), {
+        tier: getAiLlmTier(),
         onProgress: (msg, progress) => setProgress(Math.min(0.95, progress || 0.1), msg),
       });
       setProgress(null);

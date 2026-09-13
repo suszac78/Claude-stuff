@@ -69,6 +69,7 @@
     </aside>
   </main>
 
+  <div class="ai-command-area">
   <section class="ai-bar">
     <button id="aiSettingsToggle" class="btn btn-icon" title="AI settings">⚙</button>
     <input id="aiInput" type="text" placeholder='Tell the editor what to do — e.g. "add text \'Hello\' from 0 to 3 top center" or "zoom in on clip 1 from 2 to 5"' />
@@ -84,10 +85,11 @@
     </label>
     <label class="ai-mode-option">
       <input type="radio" name="aiMode" id="aiModeLocalLlm" value="local-llm" />
-      <span><strong>Free Local AI</strong> — free, no account, real language understanding. Downloads a small
-      (~880MB, one-time, cached by your browser) AI model and runs it on your device via WebGPU
-      (Chrome/Edge only). Weaker than Claude at complex, multi-step instructions.</span>
+      <span><strong>Free Local AI</strong> — free, no account, real language understanding. Downloads an AI model
+      (one-time, cached by your browser) and runs it on your device via WebGPU (Chrome/Edge only). No local model
+      matches Claude, but you can trade download size/speed for quality below.</span>
     </label>
+    <div id="localLlmTierGroup" class="ai-tier-group" hidden></div>
     <label class="ai-mode-option">
       <input type="radio" name="aiMode" id="aiModeClaude" value="claude" />
       <span><strong>Claude API</strong> — best quality, phrase requests however you like, but costs API usage on
@@ -96,6 +98,7 @@
     <input id="claudeApiKey" type="password" placeholder="sk-ant-... (stored only in this browser)" hidden />
     <p class="panel-hint">This same setting also controls whether "🔍 Recognize Video Content" uses the free local
     model or Claude Vision.</p>
+  </div>
   </div>
 
   <footer class="timeline-pane">

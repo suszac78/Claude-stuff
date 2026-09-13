@@ -160,6 +160,10 @@ input, select, textarea {
 .field-textarea { width: 100%; margin-bottom: 8px; resize: vertical; }
 label > span { margin-left: 6px; }
 
+.ai-command-area {
+  max-height: 45vh;
+  overflow-y: auto;
+}
 .ai-bar {
   display: flex;
   align-items: center;
@@ -167,6 +171,9 @@ label > span { margin-left: 6px; }
   padding: 10px 16px;
   background: var(--bg-2);
   border-top: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 .ai-bar input { flex: 1; padding: 10px 12px; font-size: 13px; }
 .ai-settings {
@@ -191,6 +198,20 @@ label > span { margin-left: 6px; }
 .ai-mode-option input[type="radio"] { margin-top: 3px; flex-shrink: 0; }
 .ai-mode-option span { font-size: 12px; line-height: 1.5; color: var(--text-dim); }
 .ai-mode-option code { background: var(--bg); padding: 1px 4px; border-radius: 4px; font-size: 11px; }
+.ai-tier-group { display: flex; flex-direction: column; gap: 6px; margin-left: 28px; margin-top: -4px; }
+.ai-tier-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.ai-tier-option:has(input:checked) { border-color: var(--accent-2); background: var(--bg-3); }
+.ai-tier-option input[type="radio"] { margin-top: 2px; flex-shrink: 0; }
+.ai-tier-option .tier-note { color: var(--text-dim); }
 
 .timeline-pane {
   border-top: 1px solid var(--border);
