@@ -121,6 +121,25 @@ Valid action objects (omit fields you don't need):
 {"type":"addZoom","clipIndex":n,"start":sec,"end":sec,"fromScale":n,"toScale":n,"fromX":0-100,"fromY":0-100,"toX":0-100,"toY":0-100}
 {"type":"removeSilence","clipIndex":n}
 {"type":"detectScenes","clipIndex":n}
+
+IMPORTANT — "delete" and "setSpeed" also accept "at":seconds (a global
+timeline time that falls anywhere inside the segment you're targeting) as
+an alternative to "clipIndex". Prefer "at" over "clipIndex" whenever this
+action comes after one or more "split" actions earlier in the SAME
+response: each split inserts a new clip and shifts every later index, so
+predicting the resulting clipIndex is easy to get wrong, and a wrong index
+can silently hit the wrong segment (including deleting or slowing down the
+wrong piece, or the very end of the video). "at" has no such problem — it's
+looked up against the timeline as it exists at the moment this action
+actually runs, i.e. after all earlier actions in this same list have
+already applied, so it always resolves to the segment you meant. Example:
+to remove a 2-second gap you can identify but don't know the resulting
+index of, do {"type":"split","at":11},{"type":"split","at":13},
+{"type":"delete","at":12} — "at":12 falls inside the segment you just
+carved out with the two splits, so it deletes exactly that piece regardless
+of what index it ends up at. Only use "clipIndex" for a delete/setSpeed
+that does NOT follow a split in this same response (e.g. "delete clip 2").
+
 Some clips include a "contentTimeline": an array of {start,end,description}
 produced by watching the actual video frames, describing what is visibly
 happening across that clip in seconds relative to its own (trimmed) start.
@@ -297,6 +316,18 @@ async function executeOne(state, action, log) {
     if (!clip) throw new Error(`no clip at index ${idx}`);
     return clip;
   };
+  // "delete"/"setSpeed" can target a clip either by index or by a global
+  // timeline "at" — the latter is resolved against the *current* timeline,
+  // so it stays correct no matter how many splits earlier in this same
+  // action batch have already inserted new clips and shifted indices.
+  const resolveTargetClip = (act) => {
+    if (act.at != null) {
+      const loc = state.locateTime(act.at);
+      if (loc) return loc.clip;
+      throw new Error(`no clip at time ${act.at}s`);
+    }
+    return clipAt(act.clipIndex);
+  };
 
   switch (action.type) {
     case 'split': {
@@ -308,9 +339,9 @@ async function executeOne(state, action, log) {
       return;
     }
     case 'delete': {
-      const clip = clipAt(action.clipIndex);
+      const clip = resolveTargetClip(action);
       state.removeClip(clip.id);
-      log(`Deleted clip ${action.clipIndex + 1}`);
+      log(`Deleted clip at ${action.at != null ? `${action.at}s` : `index ${action.clipIndex}`}`);
       return;
     }
     case 'trim': {
@@ -320,9 +351,9 @@ async function executeOne(state, action, log) {
       return;
     }
     case 'setSpeed': {
-      const clip = clipAt(action.clipIndex);
+      const clip = resolveTargetClip(action);
       state.setClipSpeed(clip.id, action.speed);
-      log(`Set clip ${action.clipIndex + 1} speed to ${action.speed}x`);
+      log(`Set clip at ${action.at != null ? `${action.at}s` : `index ${action.clipIndex}`} speed to ${action.speed}x`);
       return;
     }
     case 'addText': {
