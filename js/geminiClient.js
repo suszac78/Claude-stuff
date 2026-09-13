@@ -11,7 +11,10 @@ import { sampleFrames, visionIntroText, visionAskText, filterSegments } from './
 // generativelanguage.googleapis.com) and stored only in localStorage by the
 // caller, same as the Claude key.
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+// Google retires/renames model ids over time; if this ever 404s with a
+// message naming a replacement model, that message is authoritative — just
+// update this constant to whatever it says.
+const GEMINI_MODEL = 'gemini-3.6-flash';
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 async function callGemini(apiKey, { systemInstruction, parts, maxOutputTokens = 1536 }) {
