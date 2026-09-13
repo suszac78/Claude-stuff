@@ -1,5 +1,6 @@
 import { seekTo } from './autoCut.js';
 import { callGemini } from './geminiClient.js';
+import { extractTopLevelObjects } from './aiCommands.js';
 
 // "Identify the trading card on screen, look up what it's worth, show the
 // price" — a small pipeline chaining three independent services:
@@ -59,11 +60,19 @@ export async function identifyCardWithGemini(state, apiKey, globalTime) {
       { text: IDENTIFY_PROMPT },
       { inline_data: { mime_type: 'image/jpeg', data: base64 } },
     ],
-    maxOutputTokens: 512,
+    // Generous headroom, same reasoning as the other Gemini call sites: on
+    // a reasoning model, internal "thinking" tokens are drawn from this same
+    // budget before any visible JSON even starts — too tight a cap here (a
+    // real failure seen in practice at 512) truncates the response mid-object.
+    maxOutputTokens: 2048,
   });
-  const objectMatch = raw.match(/\{[\s\S]*\}/);
-  if (!objectMatch) throw new Error(`Gemini gave an unusable response: "${raw.slice(0, 150)}"`);
-  const result = JSON.parse(objectMatch[0]);
+  const braceStart = raw.indexOf('{');
+  if (braceStart === -1) throw new Error(`Gemini gave an unusable response: "${raw.slice(0, 150)}"`);
+  const [objectText] = extractTopLevelObjects(raw.slice(braceStart));
+  if (!objectText) {
+    throw new Error(`Gemini's response got cut off before finishing (try again): "${raw.slice(0, 150)}"`);
+  }
+  const result = JSON.parse(objectText);
   if (!result.identified || !result.name) {
     throw new Error(result.notes || 'Gemini could not confidently identify a card in this frame.');
   }
