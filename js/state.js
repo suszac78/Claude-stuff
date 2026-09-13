@@ -54,11 +54,26 @@ function makeZoomKeyframe(partial) {
   };
 }
 
+function makeSoundEffect(partial) {
+  return {
+    id: uid('sfx'),
+    kind: 'builtin', // 'builtin' | 'custom'
+    effect: null, // builtin effect id (see soundEffects.js BUILTIN_EFFECTS)
+    url: null, // custom: blob URL of the uploaded audio
+    name: '',
+    start: 0, // global timeline seconds
+    duration: 0.3,
+    volume: 1,
+    ...partial,
+  };
+}
+
 export class EditorState {
   constructor() {
     this.clips = [];
     this.textOverlays = [];
     this.zoomKeyframes = [];
+    this.soundEffects = [];
     this.playhead = 0;
     this.playing = false;
     this.selection = { type: null, id: null };
@@ -225,6 +240,25 @@ export class EditorState {
     return this.textOverlays.filter((o) => globalTime >= o.start && globalTime < o.end);
   }
 
+  addSoundEffect(partial) {
+    const sfx = makeSoundEffect(partial);
+    this.soundEffects.push(sfx);
+    this.emit('sfx');
+    return sfx;
+  }
+
+  updateSoundEffect(id, patch) {
+    const sfx = this.soundEffects.find((s) => s.id === id);
+    if (!sfx) return;
+    Object.assign(sfx, patch);
+    this.emit('sfx');
+  }
+
+  removeSoundEffect(id) {
+    this.soundEffects = this.soundEffects.filter((s) => s.id !== id);
+    this.emit('sfx');
+  }
+
   setContentAnalysis(clipId, segments) {
     this.contentAnalysis.set(clipId, segments);
     this.emit('content');
@@ -240,6 +274,7 @@ export class EditorState {
         clips: this.clips.map(({ url, ...rest }) => rest), // urls are blob: local-only
         textOverlays: this.textOverlays,
         zoomKeyframes: this.zoomKeyframes,
+        soundEffects: this.soundEffects.map(({ url, ...rest }) => rest),
       },
       null,
       2

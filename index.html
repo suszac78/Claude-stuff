@@ -36,6 +36,7 @@
       <div class="side-tabs">
         <button class="side-tab active" data-tab="text">Text</button>
         <button class="side-tab" data-tab="zoom">Zoom</button>
+        <button class="side-tab" data-tab="audio">Audio</button>
         <button class="side-tab" data-tab="auto">Auto-Cut</button>
       </div>
 
@@ -47,6 +48,17 @@
       <div class="side-tab-content" data-tab-content="zoom" hidden>
         <button id="addZoomBtn" class="btn btn-secondary btn-block">+ Add Zoom on Selected Clip</button>
         <div id="zoomPanel" class="panel-body"></div>
+      </div>
+
+      <div class="side-tab-content" data-tab-content="audio" hidden>
+        <p class="panel-hint">Sound effects are placed at the playhead on the global timeline. Click a builtin
+        effect below, or upload your own audio clip.</p>
+        <div id="sfxBuiltinList" class="sfx-builtin-grid"></div>
+        <hr class="panel-divider" />
+        <label class="btn btn-secondary btn-block" for="sfxUploadInput">+ Upload Custom Sound at Playhead</label>
+        <input id="sfxUploadInput" type="file" accept="audio/*" hidden />
+        <hr class="panel-divider" />
+        <div id="sfxPanel" class="panel-body"></div>
       </div>
 
       <div class="side-tab-content" data-tab-content="auto" hidden>

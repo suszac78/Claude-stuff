@@ -11,6 +11,7 @@ import { analyzeClipContentLocal } from './localVision.js';
 import { parseCommandWithLocalLLM, MODEL_TIERS } from './localLLM.js';
 import { parseCommandWithGemini, analyzeClipContentWithGemini } from './geminiClient.js';
 import { lookupCardPriceAtTime } from './cardPricing.js';
+import { BUILTIN_EFFECTS, SoundEffectPlayer } from './soundEffects.js';
 import { exportProject, downloadBlob } from './exportPipeline.js';
 import { formatTime } from './utils.js';
 
@@ -19,9 +20,14 @@ const canvas = document.getElementById('previewCanvas');
 const preview = new Preview(state, canvas);
 preview.start();
 
+const sfxPlayer = new SoundEffectPlayer(state);
+
 const timelineContainer = document.getElementById('timelineContainer');
 const timeline = new Timeline(state, timelineContainer, {
-  onSeek: (t) => preview.seek(t),
+  onSeek: (t) => {
+    sfxPlayer.resetScheduling();
+    preview.seek(t);
+  },
   onSelect: (type, id) => {
     state.selection = { type, id };
     refreshSidePanel();
@@ -62,6 +68,7 @@ function refreshSidePanel() {
   if (state.selection.type === 'zoom') zoomPanel.renderFor(state.selection.id);
   else zoomPanel.renderEmpty();
   renderContentAnalysisPanel();
+  renderSfxPanel();
 }
 
 state.on(() => rerenderAll());
@@ -74,6 +81,7 @@ playBtn.addEventListener('click', () => {
     preview.pause();
     playBtn.textContent = '▶';
   } else {
+    sfxPlayer.resetScheduling();
     preview.play();
     playBtn.textContent = '⏸';
   }
@@ -87,6 +95,7 @@ preview.onTimeUpdate = () => {
   document.getElementById('timeLabel').textContent =
     `${formatTime(state.playhead)} / ${formatTime(state.totalDuration())}`;
   timeline.render();
+  sfxPlayer.tick(state.playhead);
 };
 setInterval(() => {
   if (!state.playing) {
@@ -278,6 +287,127 @@ document.getElementById('cardPriceBtn').addEventListener('click', async () => {
     console.error(err);
   }
 });
+
+// --- Sound effects -------------------------------------------------------
+const sfxBuiltinList = document.getElementById('sfxBuiltinList');
+for (const effect of BUILTIN_EFFECTS) {
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-secondary btn-block';
+  btn.textContent = effect.label;
+  btn.addEventListener('click', () => {
+    const sfx = state.addSoundEffect({
+      kind: 'builtin',
+      effect: effect.id,
+      duration: effect.duration,
+      start: state.playhead,
+    });
+    state.selection = { type: 'sfx', id: sfx.id };
+    rerenderAll();
+    setStatus(`Added "${effect.label}" at ${formatTime(state.playhead, false)}.`);
+  });
+  sfxBuiltinList.appendChild(btn);
+}
+
+document.getElementById('sfxUploadInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  let duration = 1;
+  try {
+    duration = await new Promise((resolve, reject) => {
+      const probe = document.createElement('audio');
+      probe.preload = 'metadata';
+      probe.src = url;
+      probe.addEventListener('loadedmetadata', () => resolve(probe.duration || 1));
+      probe.addEventListener('error', () => reject(new Error('could not read audio file')));
+    });
+  } catch (err) {
+    setStatus(`Failed to load "${file.name}": ${err.message}`);
+    e.target.value = '';
+    return;
+  }
+  const sfx = state.addSoundEffect({
+    kind: 'custom',
+    url,
+    name: file.name,
+    duration,
+    start: state.playhead,
+  });
+  state.selection = { type: 'sfx', id: sfx.id };
+  rerenderAll();
+  setStatus(`Added custom sound "${file.name}" at ${formatTime(state.playhead, false)}.`);
+  e.target.value = '';
+});
+
+function renderSfxPanel() {
+  const container = document.getElementById('sfxPanel');
+  if (!container) return;
+  container.innerHTML = '';
+  const sorted = [...state.soundEffects].sort((a, b) => a.start - b.start);
+  for (const sfx of sorted) {
+    const isSelected = state.selection.type === 'sfx' && state.selection.id === sfx.id;
+    const item = document.createElement('div');
+    item.className = 'sfx-item';
+    if (isSelected) item.style.borderColor = 'var(--accent-2)';
+
+    const label = document.createElement('span');
+    label.className = 'sfx-item-label';
+    const name = sfx.kind === 'builtin' ? (BUILTIN_EFFECTS.find((e) => e.id === sfx.effect)?.label || sfx.effect) : sfx.name;
+    label.textContent = `${name} @ ${formatTime(sfx.start, false)}`;
+    item.appendChild(label);
+
+    const startInput = document.createElement('input');
+    startInput.type = 'number';
+    startInput.step = '0.1';
+    startInput.min = '0';
+    startInput.value = sfx.start.toFixed(1);
+    startInput.style.width = '64px';
+    startInput.addEventListener('change', () => {
+      state.updateSoundEffect(sfx.id, { start: Math.max(0, parseFloat(startInput.value) || 0) });
+    });
+    item.appendChild(startInput);
+
+    const volInput = document.createElement('input');
+    volInput.type = 'range';
+    volInput.min = '0';
+    volInput.max = '2';
+    volInput.step = '0.05';
+    volInput.value = sfx.volume ?? 1;
+    volInput.title = 'Volume';
+    volInput.addEventListener('input', () => {
+      state.updateSoundEffect(sfx.id, { volume: parseFloat(volInput.value) });
+    });
+    item.appendChild(volInput);
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn-icon';
+    delBtn.textContent = '✕';
+    delBtn.title = 'Remove sound effect';
+    delBtn.addEventListener('click', () => {
+      state.removeSoundEffect(sfx.id);
+      if (state.selection.type === 'sfx' && state.selection.id === sfx.id) {
+        state.selection = { type: null, id: null };
+      }
+      rerenderAll();
+    });
+    item.appendChild(delBtn);
+
+    item.addEventListener('click', (e) => {
+      if (e.target === startInput || e.target === volInput || e.target === delBtn) return;
+      state.selection = { type: 'sfx', id: sfx.id };
+      refreshSidePanel();
+      timeline.render();
+    });
+
+    container.appendChild(item);
+  }
+  if (sorted.length === 0) {
+    const hint = document.createElement('p');
+    hint.className = 'panel-hint';
+    hint.textContent = 'No sound effects placed yet.';
+    container.appendChild(hint);
+  }
+}
 
 // --- AI command bar --------------------------------------------------------
 const aiInput = document.getElementById('aiInput');

@@ -261,8 +261,8 @@ label > span { margin-left: 6px; }
 .tick-major { height: 10px; background: var(--text-dim); }
 .tick-label { position: absolute; top: 10px; left: 2px; font-size: 10px; color: var(--text-dim); white-space: nowrap; }
 
-.clip-track, .overlay-track, .zoom-track { position: relative; height: 40px; margin-top: 4px; }
-.overlay-track, .zoom-track { height: 28px; }
+.clip-track, .overlay-track, .zoom-track, .sfx-track { position: relative; height: 40px; margin-top: 4px; }
+.overlay-track, .zoom-track, .sfx-track { height: 24px; }
 
 .clip-block {
   position: absolute;
@@ -281,7 +281,7 @@ label > span { margin-left: 6px; }
 .trim-left { left: 0; }
 .trim-right { right: 0; }
 
-.overlay-chip, .zoom-chip {
+.overlay-chip, .zoom-chip, .sfx-chip {
   position: absolute;
   top: 0;
   height: 100%;
@@ -295,6 +295,23 @@ label > span { margin-left: 6px; }
 .overlay-chip { background: #3f2b52; border: 1px solid #5c3d78; }
 .overlay-chip.selected { border-color: var(--accent-2); }
 .zoom-chip { background: #1f3f3a; border: 1px solid #2d5c53; }
+.sfx-chip { background: #4a2f1a; border: 1px solid #7a4d26; }
+.sfx-chip.selected { border-color: var(--accent-2); }
+
+.sfx-builtin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+.sfx-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--panel-2, #21243a);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.sfx-item .sfx-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .playhead {
   position: absolute;

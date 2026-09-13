@@ -73,9 +73,24 @@ your own Claude API key.
     that provider's vision model instead, producing much richer, specific
     descriptions (`hand tears open a sealed pack of cards`) since it isn't
     limited to a fixed class list — at the cost of API usage on your key.
+- **Sound effects** (Audio tab): six procedurally-synthesized builtin effects
+  (beep, pop, whoosh, ding, drumroll, camera shutter) generated on-the-fly via
+  the Web Audio API — no audio assets shipped, zero licensing concerns — plus
+  support for uploading your own sound. Click a builtin (or upload a file) to
+  drop it at the playhead; drag its start time, adjust its volume, or delete
+  it from the Audio panel/timeline. Effects play live during preview and are
+  mixed into the exported audio track with ffmpeg (`adelay`/`amix`), so what
+  you hear while editing is what ships in the export.
+- **Card price lookup** (Auto-Cut tab, "💰 Add Card Price at Playhead"): for
+  anyone filming trading-card content — points Gemini's vision model at the
+  frame under the playhead to identify the card, looks up its market price on
+  [JustTCG](https://justtcg.com) (needs your own JustTCG API key), converts
+  USD → AUD, and drops the result on the timeline as a text overlay. Needs a
+  Gemini API key (⚙ settings) regardless of which AI mode you use for the
+  command bar, plus your own JustTCG key.
 - **Export**: renders the full timeline (trims, speed, zoom keyframes, text
-  overlays) to a downloadable H.264/AAC MP4, entirely client-side via
-  ffmpeg.wasm.
+  overlays, sound effects) to a downloadable H.264/AAC MP4, entirely
+  client-side via ffmpeg.wasm.
 
 ## Running it
 
@@ -116,6 +131,8 @@ js/geminiClient.js       Gemini API bridge (text command parsing + vision), mirr
 js/localLLM.js           WebLLM: free local NL command parsing via a small in-browser LLM, no key needed
 js/visionAnalysis.js     Claude Vision: frame sampling + content-timeline recognition (paid, needs a key)
 js/localVision.js        TensorFlow.js/COCO-SSD: free local object recognition, no key needed
+js/soundEffects.js       Procedural SFX synthesis (Web Audio), custom upload resolution, live preview scheduling, WAV encoding for export
+js/cardPricing.js        Gemini vision card ID -> JustTCG price lookup -> USD/AUD conversion
 js/exportPipeline.js    Builds the ffmpeg filter graph and renders the final MP4
 js/app.js               Wires everything to the DOM
 vendor/                Vendored ffmpeg.wasm packages (MIT) — see vendor/NOTICE.md
@@ -135,6 +152,13 @@ assets/fonts/           Roboto (Apache-2.0), used by drawtext on export
 4. Text overlays are baked in as a chained `drawtext` pass, each windowed to
    its start/end with `enable='between(t,...)'` and an alpha ramp for the
    fade animation.
+5. Sound effects are rendered/resolved to `AudioBuffer`s (same code path as
+   the live preview), encoded to WAV, and mixed into the audio track with
+   `adelay` (to place each at its start time) feeding into `amix`. If the
+   source footage has no audio track at all, the mix falls back to combining
+   just the sound effects (detected by probing the file with ffmpeg first —
+   referencing a nonexistent `0:a` stream in the filtergraph is a hard
+   ffmpeg error otherwise).
 
 ## Known limitations
 
@@ -148,8 +172,14 @@ assets/fonts/           Roboto (Apache-2.0), used by drawtext on export
   browser for convenience during development; for a production deployment
   you'd want to proxy that call through your own backend instead of shipping
   a user's API key to client-side JS.
-- No audio mixing/ducking, transitions, or multi-track video compositing
-  yet — single video track with overlay text/zoom is what's implemented.
+- Sound effects support placement/volume but not ducking the underlying
+  video audio under an effect, fades, or overlapping-effect crossfades; no
+  transitions or multi-track video compositing yet — single video track with
+  overlay text/zoom/sfx is what's implemented.
+- Card price lookup depends entirely on Gemini's vision identification being
+  correct and JustTCG actually listing the exact card/printing — it surfaces
+  Gemini's confidence and notes when identification isn't "high" confidence,
+  but doesn't verify the match against anything else.
 - The free local recognition path (COCO-SSD) only knows 80 generic object
   classes — it can spot "person" or "cell phone" but has no concept of, say,
   a specific card trick, so it can't produce the same specific descriptions

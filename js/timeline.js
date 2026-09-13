@@ -61,9 +61,14 @@ export class Timeline {
       );
     }
 
+    const sfxTrack = el('div', { class: 'sfx-track', style: `width:${width}px` });
+    for (const s of state.soundEffects) {
+      sfxTrack.appendChild(this._renderSfxChip(s, pps));
+    }
+
     const playhead = el('div', {
       class: 'playhead',
-      style: `left:${state.playhead * pps}px;height:${40 + 28 + 24 + 12}px`,
+      style: `left:${state.playhead * pps}px;height:${40 + 28 + 24 + 24 + 12}px`,
     });
 
     const wrapper = el('div', { class: 'timeline-scroll-inner', style: `width:${width}px` }, [
@@ -71,6 +76,7 @@ export class Timeline {
       track,
       overlayTrack,
       zoomTrack,
+      sfxTrack,
       playhead,
     ]);
     wrapper.addEventListener('click', (e) => {
@@ -151,6 +157,22 @@ export class Timeline {
     };
     startDrag(clipEl.querySelector('.trim-left'), true);
     startDrag(clipEl.querySelector('.trim-right'), false);
+  }
+
+  _renderSfxChip(sfx, pps) {
+    const isSelected = this.state.selection.type === 'sfx' && this.state.selection.id === sfx.id;
+    const label = sfx.kind === 'builtin' ? sfx.effect : (sfx.name || 'custom');
+    const chip = el('div', {
+      class: `sfx-chip${isSelected ? ' selected' : ''}`,
+      style: `left:${sfx.start * pps}px;width:${Math.max(16, sfx.duration * pps)}px`,
+      text: `🔊 ${label}`,
+      title: label,
+      onclick: (e) => {
+        e.stopPropagation();
+        this.onSelect('sfx', sfx.id);
+      },
+    });
+    return chip;
   }
 
   _renderOverlayChip(overlay, pps) {

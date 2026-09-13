@@ -1,6 +1,24 @@
-import { getFFmpeg } from './ffmpegClient.js';
+import { getFFmpeg, onLog as onFfmpegLog } from './ffmpegClient.js';
 import { escapeDrawtext, clamp } from './utils.js';
 import { PROJECT } from './state.js';
+import { resolveEffectBuffer, audioBufferToWav } from './soundEffects.js';
+
+// ffmpeg.wasm's exec() resolves even when the underlying command fails (it
+// just logs to stderr and produces no output file), so the only reliable
+// way to check whether a file has an audio stream is to run `-i` with no
+// output and watch the probe info it logs.
+async function probeHasAudio(ffmpeg, filename) {
+  let hasAudio = false;
+  const unsubscribe = onFfmpegLog((msg) => {
+    if (/Stream #\d+:\d+.*Audio:/.test(msg)) hasAudio = true;
+  });
+  try {
+    await ffmpeg.exec(['-i', filename]);
+  } finally {
+    unsubscribe();
+  }
+  return hasAudio;
+}
 
 // Splits a clip's trimmed local timeline [0, localDur) into an ordered list
 // of segments, each either a plain (no-zoom) pass or covered by exactly one
@@ -144,11 +162,53 @@ export async function exportProject(state, { onProgress, onLog } = {}) {
     finalInput = 'with_text.mp4';
   }
 
+  const sfxWavFiles = [];
+  if (state.soundEffects.length > 0) {
+    progress(0.85, 'Mixing sound effects...');
+    const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const inputArgs = ['-i', finalInput];
+    const sfxFilterParts = [];
+    const sfxLabels = [];
+    let inputIndex = 1;
+    try {
+      for (const sfx of state.soundEffects) {
+        const buffer = await resolveEffectBuffer(sfx, tempCtx);
+        const wavBlob = audioBufferToWav(buffer);
+        const wavData = new Uint8Array(await wavBlob.arrayBuffer());
+        const fname = `sfx${inputIndex}.wav`;
+        await ffmpeg.writeFile(fname, wavData);
+        sfxWavFiles.push(fname);
+        inputArgs.push('-i', fname);
+        const delayMs = Math.max(0, Math.round(sfx.start * 1000));
+        const vol = sfx.volume ?? 1;
+        sfxFilterParts.push(`[${inputIndex}:a]adelay=${delayMs}|${delayMs},volume=${vol}[sfx${inputIndex}]`);
+        sfxLabels.push(`[sfx${inputIndex}]`);
+        inputIndex++;
+      }
+    } finally {
+      tempCtx.close();
+    }
+    const baseHasAudio = await probeHasAudio(ffmpeg, finalInput);
+    const filterComplex = baseHasAudio
+      ? `${sfxFilterParts.join(';')};[0:a]anull[a0];[a0]${sfxLabels.join('')}amix=inputs=${sfxLabels.length + 1}:duration=first:dropout_transition=0:normalize=0[aout]`
+      : `${sfxFilterParts.join(';')};${sfxLabels.join('')}amix=inputs=${sfxLabels.length}:duration=longest:dropout_transition=0:normalize=0[aout]`;
+    await ffmpeg.exec([
+      ...inputArgs,
+      '-filter_complex', filterComplex,
+      '-map', '0:v',
+      '-map', '[aout]',
+      '-c:v', 'copy',
+      '-c:a', 'aac', '-ar', '48000', '-ac', '2',
+      'with_sfx.mp4',
+    ]);
+    finalInput = 'with_sfx.mp4';
+  }
+
   progress(0.95, 'Finalizing...');
   const data = await ffmpeg.readFile(finalInput);
   const blob = new Blob([data.buffer], { type: 'video/mp4' });
 
-  for (const f of [...clipFileNames.values(), ...segmentFiles, 'concat.txt', 'concat_out.mp4', 'with_text.mp4']) {
+  for (const f of [...clipFileNames.values(), ...segmentFiles, ...sfxWavFiles, 'concat.txt', 'concat_out.mp4', 'with_text.mp4', 'with_sfx.mp4']) {
     try { await ffmpeg.deleteFile(f); } catch {}
   }
 
