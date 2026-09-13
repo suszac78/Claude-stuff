@@ -7,8 +7,9 @@ const FRAME_H = 216;
 
 // Samples evenly-spaced frames across a clip's *trimmed* local timeline and
 // returns them as small base64 JPEGs (cheap enough to send several to a
-// vision model in one request).
-async function sampleFrames(clip, { maxFrames = 16, minFrames = 4 } = {}) {
+// vision model in one request). Shared by every vision backend (Claude,
+// Gemini) so the sampling strategy only has to be tuned once.
+export async function sampleFrames(clip, { maxFrames = 16, minFrames = 4 } = {}) {
   const video = document.createElement('video');
   video.src = clip.url;
   video.muted = true;
@@ -38,6 +39,20 @@ async function sampleFrames(clip, { maxFrames = 16, minFrames = 4 } = {}) {
   return { frames, localDur };
 }
 
+// The instructions text is identical no matter which vision model reads it —
+// only how each provider's API wants images packaged differs. Shared so
+// Claude's and Gemini's vision bridges can't drift in wording/output shape.
+export function visionIntroText(frameCount, localDur) {
+  return `Here are ${frameCount} frames sampled evenly across a ${localDur.toFixed(1)}s video clip, in chronological order. Each frame is preceded by a text label giving its timestamp in seconds.`;
+}
+export function visionAskText(localDur) {
+  return `Based on these frames, describe what happens across the full ${localDur.toFixed(1)}s clip as a timeline of short segments. Respond with ONLY a JSON array (no prose, no markdown fences) of objects shaped like {"start":number,"end":number,"description":string}, covering the entire 0-${localDur.toFixed(1)} range with no gaps and no overlaps, ordered chronologically. Each description should be under 15 words and name concrete visible objects/actions (e.g. "hand holds a sealed pack of cards", "cards fanned out face-down on table", "pack torn open, cards revealed").`;
+}
+
+export function filterSegments(segments) {
+  return segments.filter((s) => typeof s.start === 'number' && typeof s.end === 'number' && s.description);
+}
+
 // Sends sampled frames to Claude's vision endpoint and asks for a JSON
 // timeline of what's visually happening, in the same {start,end,...} shape
 // used everywhere else in the app. Requires a user-supplied API key (same
@@ -47,20 +62,12 @@ export async function analyzeClipContent(clip, apiKey, { onProgress } = {}) {
   const { frames, localDur } = await sampleFrames(clip);
 
   onProgress && onProgress(`Asking Claude to watch ${frames.length} frames...`);
-  const content = [
-    {
-      type: 'text',
-      text: `Here are ${frames.length} frames sampled evenly across a ${localDur.toFixed(1)}s video clip, in chronological order. Each frame is preceded by a text label giving its timestamp in seconds.`,
-    },
-  ];
+  const content = [{ type: 'text', text: visionIntroText(frames.length, localDur) }];
   for (const f of frames) {
     content.push({ type: 'text', text: `Frame at t=${f.t.toFixed(2)}s:` });
     content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: f.base64 } });
   }
-  content.push({
-    type: 'text',
-    text: `Based on these frames, describe what happens across the full ${localDur.toFixed(1)}s clip as a timeline of short segments. Respond with ONLY a JSON array (no prose, no markdown fences) of objects shaped like {"start":number,"end":number,"description":string}, covering the entire 0-${localDur.toFixed(1)} range with no gaps and no overlaps, ordered chronologically. Each description should be under 15 words and name concrete visible objects/actions (e.g. "hand holds a sealed pack of cards", "cards fanned out face-down on table", "pack torn open, cards revealed").`,
-  });
+  content.push({ type: 'text', text: visionAskText(localDur) });
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -85,6 +92,5 @@ export async function analyzeClipContent(clip, apiKey, { onProgress } = {}) {
   if (!textBlock) throw new Error('No text response from Claude');
   const jsonMatch = textBlock.text.match(/\[[\s\S]*\]/);
   if (!jsonMatch) throw new Error('Could not find a JSON timeline in the response');
-  const segments = JSON.parse(jsonMatch[0]);
-  return segments.filter((s) => typeof s.start === 'number' && typeof s.end === 'number' && s.description);
+  return filterSegments(JSON.parse(jsonMatch[0]));
 }

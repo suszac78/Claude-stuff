@@ -9,6 +9,7 @@ import { parseCommandOffline, parseCommandWithClaude, summarizeProject, executeA
 import { analyzeClipContent } from './visionAnalysis.js';
 import { analyzeClipContentLocal } from './localVision.js';
 import { parseCommandWithLocalLLM, MODEL_TIERS } from './localLLM.js';
+import { parseCommandWithGemini, analyzeClipContentWithGemini } from './geminiClient.js';
 import { exportProject, downloadBlob } from './exportPipeline.js';
 import { formatTime } from './utils.js';
 
@@ -199,19 +200,26 @@ document.getElementById('recognizeContentBtn').addEventListener('click', async (
   const clip = selectedClip();
   if (!clip) return setStatus('Select a clip first.');
 
-  const useClaude = getAiMode() === 'claude' && !!claudeApiKey.value;
+  const mode = getAiMode();
+  const useClaude = mode === 'claude' && !!claudeApiKey.value;
+  const useGemini = mode === 'gemini' && !!geminiApiKey.value;
+  const label = useClaude ? 'Claude Vision' : useGemini ? 'Gemini Vision' : null;
+
   try {
-    setProgress(0.05, useClaude ? 'Recognizing video content with Claude Vision...' : 'Recognizing video content (free, local, no API key)...');
+    setProgress(0.05, label ? `Recognizing video content with ${label}...` : 'Recognizing video content (free, local, no API key)...');
+    const onProgress = (msg) => setProgress(0.4, msg);
     const segments = useClaude
-      ? await analyzeClipContent(clip, claudeApiKey.value, { onProgress: (msg) => setProgress(0.4, msg) })
-      : await analyzeClipContentLocal(clip, { onProgress: (msg) => setProgress(0.4, msg) });
+      ? await analyzeClipContent(clip, claudeApiKey.value, { onProgress })
+      : useGemini
+        ? await analyzeClipContentWithGemini(clip, geminiApiKey.value, { onProgress })
+        : await analyzeClipContentLocal(clip, { onProgress });
     state.setContentAnalysis(clip.id, segments);
     renderContentAnalysisPanel();
     setProgress(null);
     setStatus(
-      useClaude
-        ? `Recognized ${segments.length} segment(s) with Claude Vision.`
-        : `Recognized ${segments.length} segment(s) locally (free) — for richer descriptions, switch AI mode to Claude API.`
+      label
+        ? `Recognized ${segments.length} segment(s) with ${label}.`
+        : `Recognized ${segments.length} segment(s) locally (free) — for richer descriptions, switch AI mode to Claude or Gemini API.`
     );
   } catch (err) {
     setProgress(null);
@@ -223,6 +231,7 @@ document.getElementById('recognizeContentBtn').addEventListener('click', async (
 // --- AI command bar --------------------------------------------------------
 const aiInput = document.getElementById('aiInput');
 const claudeApiKey = document.getElementById('claudeApiKey');
+const geminiApiKey = document.getElementById('geminiApiKey');
 const aiModeRadios = Array.from(document.querySelectorAll('input[name="aiMode"]'));
 const localLlmTierGroup = document.getElementById('localLlmTierGroup');
 
@@ -254,15 +263,19 @@ const savedTier = localStorage.getItem('novacut_ai_llm_tier') || 'smart';
 const tierRadio = aiTierRadios.find((r) => r.value === savedTier);
 if (tierRadio) tierRadio.checked = true;
 claudeApiKey.value = localStorage.getItem('novacut_claude_key') || '';
+geminiApiKey.value = localStorage.getItem('novacut_gemini_key') || '';
 
 function updateAiModeUI() {
   const mode = getAiMode();
   claudeApiKey.hidden = mode !== 'claude';
+  geminiApiKey.hidden = mode !== 'gemini';
   localLlmTierGroup.hidden = mode !== 'local-llm';
   const btn = document.getElementById('recognizeContentBtn');
   btn.textContent = mode === 'claude' && claudeApiKey.value
     ? '🔍 Recognize Video Content (Claude Vision)'
-    : '🔍 Recognize Video Content (Free)';
+    : mode === 'gemini' && geminiApiKey.value
+      ? '🔍 Recognize Video Content (Gemini Vision)'
+      : '🔍 Recognize Video Content (Free)';
 }
 updateAiModeUI();
 
@@ -280,6 +293,11 @@ claudeApiKey.addEventListener('change', () => {
   updateAiModeUI();
 });
 claudeApiKey.addEventListener('input', updateAiModeUI);
+geminiApiKey.addEventListener('change', () => {
+  localStorage.setItem('novacut_gemini_key', geminiApiKey.value);
+  updateAiModeUI();
+});
+geminiApiKey.addEventListener('input', updateAiModeUI);
 
 document.getElementById('aiSettingsToggle').addEventListener('click', () => {
   const panel = document.getElementById('aiSettings');
@@ -318,6 +336,17 @@ async function runAiCommand() {
       await reportAndExecute(actions, 'Claude');
     } catch (err) {
       setStatus(`Claude request failed: ${err.message}`);
+    }
+    return;
+  }
+
+  if (mode === 'gemini' && geminiApiKey.value) {
+    setStatus(`Asking Gemini: "${text}"`);
+    try {
+      const actions = await parseCommandWithGemini(text, geminiApiKey.value, summarizeProject(state));
+      await reportAndExecute(actions, 'Gemini');
+    } catch (err) {
+      setStatus(`Gemini request failed: ${err.message}`);
     }
     return;
   }

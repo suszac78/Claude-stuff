@@ -145,6 +145,38 @@ Instruction: "make clip 1 twice as fast"
 
 Respond with ONLY the JSON array, no prose, no markdown fences.`;
 
+const KNOWN_ACTION_TYPES = new Set([
+  'split', 'delete', 'trim', 'setSpeed', 'addText', 'deleteText',
+  'addZoom', 'removeSilence', 'detectScenes',
+]);
+
+// Shared by every "brain" that can drive the editor (Claude, Gemini, the
+// local LLM): pulls a JSON action list out of a raw model response, tolerant
+// of chatty prose around it and of a smaller model emitting a single bare
+// action object (e.g. `{"type":"split","at":0}`) instead of the requested
+// `[{"type":"split","at":0}]`.
+export function extractActionsFromText(raw) {
+  const arrayMatch = raw.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
+    try {
+      const parsed = JSON.parse(arrayMatch[0]);
+      if (Array.isArray(parsed)) return parsed.filter((a) => a && KNOWN_ACTION_TYPES.has(a.type));
+    } catch {
+      // fall through to the single-object attempt below
+    }
+  }
+  const objectMatch = raw.match(/\{[\s\S]*\}/);
+  if (objectMatch) {
+    try {
+      const parsed = JSON.parse(objectMatch[0]);
+      if (parsed && KNOWN_ACTION_TYPES.has(parsed.type)) return [parsed];
+    } catch {
+      // fall through to the error below
+    }
+  }
+  throw new Error(`No usable action found in the model's response (got: "${raw.slice(0, 120)}")`);
+}
+
 export async function parseCommandWithClaude(text, apiKey, projectSummary) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -170,9 +202,7 @@ export async function parseCommandWithClaude(text, apiKey, projectSummary) {
   const data = await res.json();
   const textBlock = (data.content || []).find((b) => b.type === 'text');
   if (!textBlock) throw new Error('No text response from Claude');
-  const jsonMatch = textBlock.text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('Could not find a JSON action list in the response');
-  return JSON.parse(jsonMatch[0]);
+  return extractActionsFromText(textBlock.text);
 }
 
 export function summarizeProject(state) {

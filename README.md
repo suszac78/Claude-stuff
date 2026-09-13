@@ -47,6 +47,11 @@ your own Claude API key.
   - **Claude API**: best quality, phrase requests however you like, at the
     cost of API usage on your own key — paste it in the same panel; it's
     stored only in `localStorage` and sent only to `api.anthropic.com`.
+  - **Gemini API**: the same bring-your-own-key idea, for anyone who already
+    has a [Google Gemini](https://aistudio.google.com/apikey) key instead of
+    a Claude one — sent only to `generativelanguage.googleapis.com`. Same
+    action schema, same executor, same vision-recognition support as
+    Claude — just a different provider underneath.
 - **Content recognition**: the offline parser and even Claude's text-only
   mode can't resolve vague references like *"speed up until the last 3
   cards"* or *"cut right when the pack is opened"* — they have no idea
@@ -55,19 +60,19 @@ your own Claude API key.
   what's actually happening. That timeline is cached and automatically fed
   into every future AI command on that clip, so content-based instructions
   can be resolved to real timestamps instead of you scrubbing the timeline
-  and typing numbers by hand. Two backends, same output shape:
-  - **Free, local, no account (default)**: runs
-    [TensorFlow.js](https://www.tensorflow.org/js) + the COCO-SSD object
-    detector entirely in your browser — no API key, no server, no cost to
-    anyone. It recognizes 80 common object classes (person, cup, phone,
-    chair, ...) and produces coarser labels like `visible: person, cup`.
-    The ~20MB model weights are fetched once per session from Google's
-    public model bucket the first time you use it.
-  - **Claude Vision (optional, needs your API key)**: if "Use Claude API"
-    is enabled with a key, this button uses Claude's vision model instead,
-    producing much richer, specific descriptions (`hand tears open a sealed
-    pack of cards`) since it isn't limited to a fixed class list — at the
-    cost of API usage on your key.
+  and typing numbers by hand. Follows whichever AI command bar mode is
+  selected, same output shape from all three:
+  - **Free, local, no account (default — Pattern Matching/Free Local AI
+    modes)**: runs [TensorFlow.js](https://www.tensorflow.org/js) + the
+    COCO-SSD object detector entirely in your browser — no API key, no
+    server, no cost to anyone. It recognizes 80 common object classes
+    (person, cup, phone, chair, ...) and produces coarser labels like
+    `visible: person, cup`. The ~20MB model weights are fetched once per
+    session from Google's public model bucket the first time you use it.
+  - **Claude Vision / Gemini Vision (Claude API / Gemini API modes)**: uses
+    that provider's vision model instead, producing much richer, specific
+    descriptions (`hand tears open a sealed pack of cards`) since it isn't
+    limited to a fixed class list — at the cost of API usage on your key.
 - **Export**: renders the full timeline (trims, speed, zoom keyframes, text
   overlays) to a downloadable H.264/AAC MP4, entirely client-side via
   ffmpeg.wasm.
@@ -106,7 +111,8 @@ js/timeline.js          Timeline UI: drag/trim/split/reorder
 js/textOverlay.js        Text overlay property panel
 js/zoomEffect.js         Zoom keyframe property panel
 js/autoCut.js           Silence + scene-change detection
-js/aiCommands.js        NL command parser (offline) + Claude bridge + shared action schema + executor
+js/aiCommands.js        NL command parser (offline) + Claude bridge + shared action schema/parser + executor
+js/geminiClient.js       Gemini API bridge (text command parsing + vision), mirrors aiCommands.js/visionAnalysis.js
 js/localLLM.js           WebLLM: free local NL command parsing via a small in-browser LLM, no key needed
 js/visionAnalysis.js     Claude Vision: frame sampling + content-timeline recognition (paid, needs a key)
 js/localVision.js        TensorFlow.js/COCO-SSD: free local object recognition, no key needed

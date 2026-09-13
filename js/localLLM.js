@@ -1,4 +1,4 @@
-import { AI_ACTION_SYSTEM_PROMPT } from './aiCommands.js';
+import { AI_ACTION_SYSTEM_PROMPT, extractActionsFromText } from './aiCommands.js';
 
 // Free, local, real natural-language command parsing — no API key, no
 // server, no cost. Runs a small instruction-tuned LLM entirely in the
@@ -97,36 +97,5 @@ export async function parseCommandWithLocalLLM(text, projectSummary, { tier = DE
     temperature: 0,
   });
   const raw = reply.choices?.[0]?.message?.content || '';
-  return parseActionsFromModelText(raw);
-}
-
-const KNOWN_ACTION_TYPES = new Set([
-  'split', 'delete', 'trim', 'setSpeed', 'addText', 'deleteText',
-  'addZoom', 'removeSilence', 'detectScenes',
-]);
-
-// Being a small model, it sometimes ignores the "respond with an array"
-// instruction and emits a single bare action object instead (e.g.
-// `{"type":"split","at":0}`) rather than `[{"type":"split","at":0}]`.
-// Accept both shapes rather than failing on the more common one.
-export function parseActionsFromModelText(raw) {
-  const arrayMatch = raw.match(/\[[\s\S]*\]/);
-  if (arrayMatch) {
-    try {
-      const parsed = JSON.parse(arrayMatch[0]);
-      if (Array.isArray(parsed)) return parsed.filter((a) => a && KNOWN_ACTION_TYPES.has(a.type));
-    } catch {
-      // fall through to the single-object attempt below
-    }
-  }
-  const objectMatch = raw.match(/\{[\s\S]*\}/);
-  if (objectMatch) {
-    try {
-      const parsed = JSON.parse(objectMatch[0]);
-      if (parsed && KNOWN_ACTION_TYPES.has(parsed.type)) return [parsed];
-    } catch {
-      // fall through to the error below
-    }
-  }
-  throw new Error(`The local model didn't return a usable action (got: "${raw.slice(0, 120)}")`);
+  return extractActionsFromText(raw);
 }
