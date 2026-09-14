@@ -13,6 +13,8 @@ export class Preview {
     this.video.muted = false;
     this.video.playsInline = true;
     this.activeClipId = null;
+    this.activeUrl = null;
+    this._loading = false;
 
     this.rafId = null;
     this.onTimeUpdate = null; // callback(globalTime)
@@ -57,8 +59,14 @@ export class Preview {
     const { clip, localTime } = loc;
     const sourceTime = clip.inPoint + localTime * clip.speed;
 
-    if (this.activeClipId !== clip.id) {
+    if (this.activeUrl !== clip.url) {
+      // A genuinely different source file — full reload, with a brief
+      // window where video.currentTime is meaningless (src just changed,
+      // metadata not loaded yet). _tick() checks `_loading` to avoid
+      // computing a bogus/backwards playhead from the video during this.
       this.activeClipId = clip.id;
+      this.activeUrl = clip.url;
+      this._loading = true;
       this.video.src = clip.url;
       this.video.playbackRate = clip.speed || 1;
       await new Promise((resolve) => {
@@ -69,9 +77,17 @@ export class Preview {
         this.video.addEventListener('loadedmetadata', onReady);
       });
       this.video.currentTime = sourceTime;
+      this._loading = false;
       if (this.state.playing) {
         try { await this.video.play(); } catch {}
       }
+    } else if (this.activeClipId !== clip.id) {
+      // Same underlying source as before (e.g. two clips produced by a
+      // split share one file) — just retarget which region we're playing,
+      // no src reassignment/reload/metadata wait needed.
+      this.activeClipId = clip.id;
+      this.video.currentTime = sourceTime;
+      this.video.playbackRate = clip.speed || 1;
     } else if (forceSeek || Math.abs(this.video.currentTime - sourceTime) > 0.15) {
       this.video.currentTime = sourceTime;
       this.video.playbackRate = clip.speed || 1;
@@ -80,18 +96,20 @@ export class Preview {
 
   _tick() {
     if (this.state.playing) {
-      const loc = this.state.locateTime(this.state.playhead);
-      if (loc) {
-        const globalNow = loc.clipStart + (this.video.currentTime - loc.clip.inPoint) / (loc.clip.speed || 1);
-        this.state.playhead = globalNow;
-        // Roll over to next clip once the current one is exhausted.
-        if (this.video.currentTime >= loc.clip.outPoint - 0.02) {
-          const total = this.state.totalDuration();
-          if (loc.clipStart + loc.clipDuration >= total - 0.02) {
-            this.pause();
-            this.state.playhead = total;
-          } else {
-            this._ensureClipLoaded();
+      if (!this._loading) {
+        const loc = this.state.locateTime(this.state.playhead);
+        if (loc) {
+          const globalNow = loc.clipStart + (this.video.currentTime - loc.clip.inPoint) / (loc.clip.speed || 1);
+          this.state.playhead = globalNow;
+          // Roll over to next clip once the current one is exhausted.
+          if (this.video.currentTime >= loc.clip.outPoint - 0.02) {
+            const total = this.state.totalDuration();
+            if (loc.clipStart + loc.clipDuration >= total - 0.02) {
+              this.pause();
+              this.state.playhead = total;
+            } else {
+              this._ensureClipLoaded();
+            }
           }
         }
       }
