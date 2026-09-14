@@ -25,9 +25,17 @@ const sfxPlayer = new SoundEffectPlayer(state);
 
 const timelineContainer = document.getElementById('timelineContainer');
 const timeline = new Timeline(state, timelineContainer, {
-  onSeek: (t) => {
+  onSeek: async (t) => {
     sfxPlayer.resetScheduling();
-    preview.seek(t);
+    // preview.seek() only redraws the canvas — nothing else moves the
+    // playhead marker's DOM position after a manual seek, so without this
+    // it silently freezes wherever it last was (usually t=0, from the
+    // initial render right after import) even though the video/time label
+    // correctly jump to the new position.
+    await preview.seek(t);
+    document.getElementById('timeLabel').textContent =
+      `${formatTime(state.playhead)} / ${formatTime(state.totalDuration())}`;
+    timeline.render();
   },
   onSelect: (type, id) => {
     state.selection = { type, id };
